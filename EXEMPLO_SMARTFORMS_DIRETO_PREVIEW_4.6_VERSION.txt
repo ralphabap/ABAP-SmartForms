@@ -1,0 +1,3147 @@
+*----------------------------------------------------------------------*
+*   INCLUDE ZRE_BI_FACT_LOJAS_VAGAS_F01                                *
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  select_data
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM select_data.
+  DATA: verrktmv LIKE tiv80-verrktmv,
+        kostkto LIKE tiv80-kostkto,
+        rfvipos LIKE rfvipos,
+        sempsl LIKE rfvipos-sempsl,
+        v_imkey LIKE bseg-imkey,
+        v_cadeia(2),
+        c_vbewa(4) TYPE n,
+        v_hkont LIKE bseg-hkont,
+        v_verrktme LIKE tiv80-verrktme,
+        v_verrktmv LIKE tiv80-verrktmv,
+        v_kostkto LIKE tiv80-kostkto,
+        v_smenr_aux LIKE vimimv-smenr,
+        v_imkey_aux LIKE bseg-imkey,
+        v_tam TYPE i VALUE 0,
+        v_vbewa LIKE zar_divis_re-vbewa,
+        i TYPE i.
+
+
+  RANGES :
+           r_customer FOR bp000-customer.
+
+  CLEAR: v_dt_venc.
+  CONCATENATE p_zfbdt+6(2) '.' p_zfbdt+4(2) '.'
+    p_zfbdt+0(4) INTO v_dt_venc.
+
+*  clear: v_bukrs.
+*  if p_bukrs = 'SH22'.
+*    move p_bukrs to v_bukrs.
+*    move 'SH02' to p_bukrs.
+*    perform carrega_mes.
+*
+*  endif.
+
+  MOVE p_bukrs TO v_bukrs.
+  IF p_bukrs = 'SH02'.
+    PERFORM carrega_mes.
+  ENDIF.
+
+* Inclusão de Authority Check
+  AUTHORITY-CHECK OBJECT 'F_BKPF_BUK'
+     ID 'BUKRS' FIELD p_bukrs
+     ID 'ACTVT' FIELD '03'.
+
+  IF sy-subrc NE 0.
+    MESSAGE a024(zfi) WITH p_bukrs.
+  ENDIF.
+  SELECT SINGLE prctr FROM viob01 INTO viob01-prctr
+                                 WHERE bukrs EQ p_bukrs
+                                   AND swenr EQ p_swenr.
+
+* if v_bukrs <> 'SH22'.
+
+  SELECT verrktme kostkto verrktmv FROM tiv80 INTO TABLE i_tiv80
+                                  WHERE ktopl EQ 'PLCT'.
+
+  CLEAR: i_tiv80_aux.
+  REFRESH: i_tiv80_aux.
+
+  i_tiv80_aux[] = i_tiv80[].
+  READ TABLE i_tiv80 INDEX 1.
+
+*  delete adjacent duplicates from i_tiv80.
+
+  CLEAR: i_bkpf.
+  REFRESH: i_bkpf.
+*  SELECT * FROM bkpf INTO TABLE i_bkpf
+*           WHERE ( bukrs = p_bukrs ) AND
+*               ( ( tcode = 'FON2' ) OR
+*                 ( tcode = 'FOSH' ) ) AND
+*                 ( stblg = '          ' )
+*                 AND budat IN p_budat.
+
+  SELECT * FROM bkpf INTO i_bkpf
+           WHERE  bukrs EQ p_bukrs
+                  AND bstat EQ space
+                  AND budat IN p_budat.
+
+    CHECK i_bkpf-tcode = 'FON2' OR i_bkpf-tcode = 'FOSH'.
+    CHECK i_bkpf-stblg IS INITIAL.
+
+*  LOOP AT i_bkpf.
+
+    IF i_bkpf-tcode EQ 'FON2'.
+      CLEAR: v_hkont.
+      LOOP AT i_tiv80_aux.
+        SELECT hkont INTO v_hkont UP TO 1 ROWS
+        FROM bseg
+        WHERE bukrs EQ p_bukrs
+          AND belnr EQ i_bkpf-belnr
+          AND gjahr EQ i_bkpf-gjahr
+          AND augbl EQ '          '
+          AND hkont EQ i_tiv80_aux-kostkto
+          AND shkzg EQ 'H'.
+        ENDSELECT.
+        IF sy-subrc = 0.
+          MOVE i_tiv80_aux-kostkto TO v_kostkto.
+          MOVE i_tiv80_aux-verrktme TO v_verrktme.
+          MOVE i_tiv80_aux-verrktmv TO v_verrktmv.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+      IF v_hkont IS INITIAL.
+        CONTINUE.
+      ENDIF.
+
+      SELECT * FROM bseg INTO i_bseg
+               WHERE bukrs EQ p_bukrs
+                 AND belnr EQ i_bkpf-belnr
+                 AND gjahr EQ i_bkpf-gjahr
+                 AND augbl EQ '          '
+                 AND hkont EQ v_verrktme.
+
+        i_bseg-budat = i_bkpf-budat.
+        i_bseg-bldat = i_bkpf-bldat.
+        i_bseg-kostkto = v_kostkto.
+        i_bseg-verrktmv = v_verrktmv.
+*       i_bseg-tcode = i_bkpf-tcode.
+        i_bseg-verrktme = v_verrktme.
+*       i_bseg-sempsl = sempsl.
+        APPEND i_bseg.
+
+      ENDSELECT.
+
+    ELSE.
+
+      SELECT * FROM bseg INTO i_bseg
+               WHERE bukrs EQ p_bukrs
+                 AND belnr EQ i_bkpf-belnr
+                 AND gjahr EQ i_bkpf-gjahr
+                 AND augbl EQ '          '
+                 AND hkont EQ c_lojas_vagas.
+
+        i_bseg-budat = i_bkpf-budat.
+        i_bseg-bldat = i_bkpf-bldat.
+*       i_bseg-tcode = i_bkpf-tcode.
+
+        APPEND i_bseg.
+
+      ENDSELECT.
+
+    ENDIF.
+
+
+
+*  ENDLOOP.
+  ENDSELECT.
+
+* endif.
+
+  SELECT SINGLE intreno FROM viob01 INTO viob01-intreno
+                 WHERE bukrs EQ p_bukrs
+                   AND swenr EQ p_swenr.
+
+*  SELECT SINGLE spartnr FROM vieige INTO vieige-spartnr
+*                WHERE intreno EQ viob01-intreno.
+
+  SELECT * FROM vieige
+                 INTO i_vieige
+                 WHERE intreno EQ viob01-intreno.
+    APPEND i_vieige.
+
+  ENDSELECT.
+
+  DESCRIBE TABLE i_vieige LINES i.
+  IF NOT i GE 1.
+    MESSAGE e999(zfi) WITH 'Não cadastrado proprietário na UE'.
+  ENDIF.
+  LOOP AT i_vieige.
+
+    SELECT SINGLE customer FROM bp000 INTO bp000-customer
+                    WHERE partnr EQ i_vieige-spartnr.
+
+    r_customer-sign   = 'I'.
+    r_customer-option = 'EQ'.
+    r_customer-low    = bp000-customer.
+    APPEND r_customer.  CLEAR r_customer.
+
+  ENDLOOP.
+
+
+*    IF p_bukrs = 'SH06'.
+*      MOVE '0000001348' TO vieige-spartnr.
+*    ENDIF.
+
+
+  SELECT bukrs gjahr buzei shkzg budat bldat shkzg belnr gjahr dmbtr
+         imkey vbewa vertn zfbdt kunnr sgtxt
+  APPENDING CORRESPONDING FIELDS OF TABLE i_bseg
+  FROM bsid
+  WHERE ( bukrs = p_bukrs )     AND
+       ( kunnr IN r_customer ) and
+        ( blart <> 'DL' )       AND
+        ( blart <> 'DG' )       AND
+          budat IN p_budat.
+
+
+  LOOP AT i_bseg.
+    IF i_bseg-koart IS INITIAL.
+      i_bseg-koart = 'D'.
+      MODIFY i_bseg.
+    ENDIF.
+  ENDLOOP.
+
+  LOOP AT i_bseg.
+    IF i_bseg-imkey IS INITIAL.
+      CLEAR: v_imkey_aux.
+      SELECT imkey INTO v_imkey_aux UP TO 1 ROWS
+      FROM bseg
+      WHERE bukrs EQ p_bukrs
+        AND belnr EQ i_bseg-belnr
+        AND gjahr EQ i_bseg-gjahr
+        AND shkzg NE i_bseg-shkzg.
+
+        MOVE v_imkey_aux TO i_bseg-imkey.
+      ENDSELECT.
+      IF sy-subrc <> 0.
+        DELETE i_bseg.
+        CONTINUE.
+      ELSE.
+* RCONDE -  AlTERACAO EM 12012001
+        IF i_bseg-imkey IS INITIAL.
+          SELECT SINGLE smenr
+            INTO i_bseg-smenr
+            FROM vimimv
+           WHERE bukrs EQ p_bukrs
+             AND smive EQ i_bseg-vertn
+             AND smenr IN s_smenr.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    IF i_bseg-smenr IS INITIAL.
+      CALL FUNCTION 'REMD_DECODE_IMKEY_RFVIPOS'
+           EXPORTING
+                i_imkey   = i_bseg-imkey
+           IMPORTING
+                e_rfvipos = aux_rfvipos.
+
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+
+      IF aux_rfvipos-swenr NE p_swenr.
+        SELECT smenr INTO v_smenr_aux UP TO 1 ROWS
+        FROM vimimv
+        WHERE ( bukrs EQ p_bukrs ) AND
+              ( smenr EQ aux_rfvipos-smenr ) AND
+              ( smive EQ aux_rfvipos-smive ).
+        ENDSELECT.
+        IF sy-subrc <> 0.
+          DELETE i_bseg.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      i_bseg-smenr = aux_rfvipos-smenr.
+    ENDIF.
+
+    IF i_bseg-vbewa IS INITIAL.
+      CLEAR: v_imkey.
+      SELECT imkey FROM bseg INTO v_imkey UP TO 1 ROWS
+      WHERE bukrs EQ p_bukrs
+            AND belnr EQ i_bseg-belnr
+            AND gjahr EQ i_bseg-gjahr
+            AND augbl EQ '          '
+            AND shkzg EQ 'H'.
+      ENDSELECT.
+
+      CALL FUNCTION 'REMD_DECODE_IMKEY_RFVIPOS'
+           EXPORTING
+                i_imkey   = v_imkey
+           IMPORTING
+                e_rfvipos = rfvipos.
+      IF sy-subrc <> 0.
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+      sempsl = rfvipos-sempsl.
+
+      CLEAR: v_cadeia.
+      MOVE sempsl+0(2) TO v_cadeia.
+
+*     Encontrar Tipo de Movimento com base na Unidade de Liquidacao
+      TRANSLATE v_cadeia TO UPPER CASE.
+      CASE v_cadeia.
+        WHEN 'IP'.
+          i_bseg-vbewa = '0700'.
+        WHEN 'AG' OR 'ÁG' OR 'ág' OR 'Ág'.
+          i_bseg-vbewa = '0900'.
+        WHEN 'AR' OR 'AC'.
+          i_bseg-vbewa = '0800'.
+        WHEN 'EN'.
+          i_bseg-vbewa = '1000'.
+      ENDCASE.
+    ENDIF.
+
+*   Tratar Tipo de Movimento
+    IF ( i_bseg-vbewa+3(1) EQ '7' ) OR
+       ( ( i_bseg-vbewa+2(1) EQ '7' ) AND
+         ( i_bseg-vbewa+3(1) NE '0' ) ).
+      i_bseg-vbewa+3(1) = '7'.
+      i_bseg-vbewa+2(1) = '0'.
+
+    ELSEIF i_bseg-vbewa+2(1) EQ '0' AND
+           i_bseg-vbewa+3(1) NE '0'.
+
+      i_bseg-vbewa+3(1) = '0'.
+
+    ENDIF.
+
+
+*   encontrar divisao com base no tipo de movimento
+    MOVE i_bseg-vbewa TO c_vbewa.
+    MOVE c_vbewa TO v_vbewa.
+    SELECT SINGLE gsber INTO i_bseg-gsber
+    FROM zar_divis_re
+    WHERE vbewa = v_vbewa.
+
+    SORT i_vieige BY dgultab ASCENDING.
+* encontrar parceiro
+    LOOP AT i_vieige.
+
+      IF i_vieige-dgultab = '00000000'.
+        CHECK i_bseg-budat LE i_vieige-dgultbis.
+        SELECT SINGLE customer FROM bp000 INTO bp000-customer
+                       WHERE partnr EQ i_vieige-spartnr.
+      ELSE.
+*      IF i_vieige-nlfdeig = '002'.
+        CHECK i_bseg-budat GE i_vieige-dgultab.
+        CHECK i_bseg-budat LE i_vieige-dgultbis.
+        SELECT SINGLE customer FROM bp000 INTO bp000-customer
+                      WHERE partnr EQ i_vieige-spartnr.
+      ENDIF.
+      CHECK sy-subrc EQ 0.
+      EXIT.
+    ENDLOOP.
+
+    IF bp000-customer IS INITIAL.
+    MESSAGE e999(zfi) WITH 'Não cadastrado prop. na UE para data
+definida'.
+    ELSE.
+      i_bseg-kunnr = bp000-customer.
+    ENDIF.
+
+    MODIFY i_bseg.
+
+  ENDLOOP.
+
+  DESCRIBE TABLE i_bseg LINES v_tam.
+  IF v_tam = 0.
+    MESSAGE i044.
+    STOP.
+  ENDIF.
+* sort i_bseg by kunnr tcode zfbdt kostkto.
+
+*  if v_bukrs <> 'SH22'.
+*    sort i_bseg by zfbdt gsber vbewa.
+*  else.
+  SORT i_bseg BY zfbdt gsber vbewa smenr.
+*  endif.
+ENDFORM.                    " select_data
+*&---------------------------------------------------------------------*
+*&      Form  add_values
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM add_values.
+  DATA: v_dmbtr_neg LIKE bseg-dmbtr VALUE 0,
+        v_tcode LIKE bkpf-tcode.
+
+  CLEAR:   i_bseg_1300.
+  REFRESH: i_bseg_1300.
+
+  LOOP AT i_bseg.
+    IF ( i_bseg-bukrs = 'SH02' ) AND
+       ( i_bseg-vbewa = '1300' OR i_bseg-vbewa = '7900'
+* RCONDE - Inclusão em 250501
+         OR i_bseg-vbewa = '8000' ).
+
+      MOVE i_bseg TO i_bseg_1300.
+      DELETE i_bseg.
+      CLEAR: v_tcode.
+      SELECT SINGLE tcode INTO v_tcode
+      FROM bkpf
+      WHERE bukrs = i_bseg-bukrs AND
+            gjahr = i_bseg-gjahr AND
+            belnr = i_bseg-belnr.
+      IF sy-subrc = 0.
+        IF v_tcode <> 'FBR2'.
+          APPEND i_bseg_1300.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+
+  CLEAR aux_bseg.
+
+  intnum = '000000'.
+
+  LOOP AT i_bseg.
+
+*   if v_bukrs <> 'SH22'.
+    IF i_bseg-kunnr EQ aux_bseg-kunnr AND
+       i_bseg-zfbdt EQ aux_bseg-zfbdt AND
+*      i_bseg-tcode eq aux_bseg-tcode and
+       i_bseg-gsber EQ aux_bseg-gsber AND
+       i_bseg-vbewa EQ aux_bseg-vbewa AND
+       i_bseg-kostkto EQ aux_bseg-kostkto.
+
+      IF i_bseg-shkzg = 'H'.
+        ADD i_bseg-dmbtr TO v_dmbtr_neg.
+      ELSE.
+        ADD i_bseg-dmbtr TO aux_bseg-dmbtr.
+      ENDIF.
+
+    ELSE.
+
+      IF NOT aux_bseg-belnr IS INITIAL.
+        aux_bseg-dmbtr = aux_bseg-dmbtr - v_dmbtr_neg.
+        MOVE-CORRESPONDING aux_bseg TO cliente.
+*        move knb1-zterm to cliente-zterm.
+        MOVE intnum TO cliente-intnum.
+        ADD 1 TO intnum.
+        UNPACK intnum TO intnum.
+        APPEND cliente.
+      ENDIF.
+
+      aux_bseg = i_bseg.
+* RCONDE - Alteracao em 14032001
+      IF aux_bseg-shkzg = 'H'.
+        aux_bseg-dmbtr = aux_bseg-dmbtr * -1.
+      ENDIF.
+* RCONDE - Alteracao em 14032001
+      CLEAR: v_dmbtr_neg.
+
+    ENDIF.
+
+    i_bseg-intnum = intnum.
+
+    MODIFY i_bseg.
+
+*    else.
+*      if i_bseg-kunnr eq aux_bseg-kunnr and
+*         i_bseg-zfbdt eq aux_bseg-zfbdt and
+**      i_bseg-tcode eq aux_bseg-tcode and
+*         i_bseg-gsber eq aux_bseg-gsber and
+*         i_bseg-vbewa eq aux_bseg-vbewa and
+*         i_bseg-smenr eq aux_bseg-smenr.
+**        i_bseg-smive eq aux_bseg-smive.
+*
+*        if i_bseg-shkzg = 'H'.
+*          add i_bseg-dmbtr to v_dmbtr_neg.
+*        else.
+*          add i_bseg-dmbtr to aux_bseg-dmbtr.
+*        endif.
+*        delete i_bseg.
+*      else.
+*
+*        if not aux_bseg-belnr is initial.
+*          aux_bseg-dmbtr = aux_bseg-dmbtr - v_dmbtr_neg.
+*          move-corresponding aux_bseg to cliente.
+**        move knb1-zterm to cliente-zterm.
+*          move intnum to cliente-intnum.
+*          add 1 to intnum.
+*          unpack intnum to intnum.
+*          append cliente.
+*        endif.
+*
+*        aux_bseg = i_bseg.
+*        clear: v_dmbtr_neg.
+*
+*        i_bseg-intnum = intnum.
+*        modify i_bseg.
+*
+*      endif.
+*
+*    endif.
+  ENDLOOP.
+
+  IF sy-subrc EQ 0.
+    aux_bseg-dmbtr = aux_bseg-dmbtr - v_dmbtr_neg.
+    MOVE-CORRESPONDING aux_bseg TO cliente.
+*    move knb1-zterm to cliente-zterm.
+    MOVE intnum TO cliente-intnum.
+
+    APPEND cliente.
+
+  ENDIF.
+
+
+  CLEAR aux_bseg.
+
+  intnum = '000000'.
+
+
+  LOOP AT i_bseg_1300.
+
+*   if v_bukrs <> 'SH22'.
+    IF i_bseg_1300-kunnr EQ aux_bseg-kunnr AND
+       i_bseg_1300-zfbdt EQ aux_bseg-zfbdt AND
+*      i_bseg_1300-tcode eq aux_bseg-tcode and
+       i_bseg_1300-gsber EQ aux_bseg-gsber AND
+       i_bseg_1300-vbewa EQ aux_bseg-vbewa AND
+       i_bseg_1300-kostkto EQ aux_bseg-kostkto.
+
+      IF i_bseg_1300-shkzg = 'H'.
+        ADD i_bseg_1300-dmbtr TO v_dmbtr_neg.
+      ELSE.
+        ADD i_bseg_1300-dmbtr TO aux_bseg-dmbtr.
+      ENDIF.
+
+    ELSE.
+
+      IF NOT aux_bseg-belnr IS INITIAL.
+        aux_bseg-dmbtr = aux_bseg-dmbtr - v_dmbtr_neg.
+        MOVE-CORRESPONDING aux_bseg TO cliente_1300.
+*        move knb1-zterm to cliente-zterm.
+        MOVE intnum TO cliente_1300-intnum.
+        ADD 1 TO intnum.
+        UNPACK intnum TO intnum.
+        APPEND cliente_1300.
+      ENDIF.
+
+      aux_bseg = i_bseg_1300.
+      CLEAR: v_dmbtr_neg.
+
+    ENDIF.
+
+    i_bseg_1300-intnum = intnum.
+    MODIFY i_bseg_1300.
+*    else.
+*      if i_bseg-kunnr eq aux_bseg-kunnr and
+*         i_bseg-zfbdt eq aux_bseg-zfbdt and
+**      i_bseg-tcode eq aux_bseg-tcode and
+*         i_bseg-gsber eq aux_bseg-gsber and
+*         i_bseg-vbewa eq aux_bseg-vbewa and
+*         i_bseg-smenr eq aux_bseg-smenr.
+**        i_bseg-smive eq aux_bseg-smive.
+*
+*        if i_bseg-shkzg = 'H'.
+*          add i_bseg-dmbtr to v_dmbtr_neg.
+*        else.
+*          add i_bseg-dmbtr to aux_bseg-dmbtr.
+*        endif.
+*        delete i_bseg.
+*      else.
+*
+*        if not aux_bseg-belnr is initial.
+*          aux_bseg-dmbtr = aux_bseg-dmbtr - v_dmbtr_neg.
+*          move-corresponding aux_bseg to cliente.
+**        move knb1-zterm to cliente-zterm.
+*          move intnum to cliente-intnum.
+*          add 1 to intnum.
+*          unpack intnum to intnum.
+*          append cliente.
+*        endif.
+*
+*        aux_bseg = i_bseg.
+*        clear: v_dmbtr_neg.
+*
+*        i_bseg-intnum = intnum.
+*        modify i_bseg.
+*
+*      endif.
+*
+*    endif.
+  ENDLOOP.
+
+  IF sy-subrc EQ 0.
+    aux_bseg-dmbtr = aux_bseg-dmbtr - v_dmbtr_neg.
+    MOVE-CORRESPONDING aux_bseg TO cliente_1300.
+*    move knb1-zterm to cliente-zterm.
+    MOVE intnum TO cliente_1300-intnum.
+    APPEND cliente_1300.
+  ENDIF.
+ENDFORM.                    " add_values
+*&---------------------------------------------------------------------*
+*&      Form  generate_batch
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM generate_batch.
+  DATA: xblnr LIKE bkpf-xblnr,
+        bktxt LIKE bkpf-bktxt,
+        date(10),
+        valor(16),
+        valor2(30),
+
+        num(3) TYPE n VALUE '000',
+        newbs(2),
+        newko(10),
+        newum,
+        first,
+        v_ult_kunnr LIKE bseg-kunnr,
+        v_ult_gsber LIKE bseg-gsber,
+        lv_hbkid    TYPE zfi_bco_divisao-hbkid,
+        tela(4) VALUE '',
+        v_mensagem(255) VALUE ''.
+
+  REFRESH cliente2.
+  cliente2[] = cliente[].
+
+  REFRESH cliente2_1300.
+  cliente2_1300[] = cliente_1300[].
+
+* >>> RLH - Alterações - 18/07/2011 - Início
+*  PERFORM open_group.
+* <<< RLH - Alterações - 18/07/2011 - Fim
+
+* if v_bukrs <> 'SH22'.
+
+* Aleração - Gabriel - 01/09/09
+
+*  LOOP AT cliente.
+  LOOP AT cliente WHERE kunnr BETWEEN '0000300000'
+                              AND     '0000399000'.
+
+* Fim Alteração - Gabriel - 01/09/09
+
+    READ TABLE i_bseg WITH KEY intnum = cliente-intnum.
+
+*    if i_bseg-tcode ne 'FON2'.
+*
+*      newbs = '09'.
+*      newko = cliente-kunnr.
+*      newum = 'k'.
+*
+*    else.
+*
+*      newbs = '40'.
+*      newko = i_bseg-verrktmv.
+*      newum = ' '.
+*
+*    endif.
+    MOVE cliente-kunnr TO v_ult_kunnr.
+    MOVE i_bseg-gsber TO v_ult_gsber.
+
+    IF ( ( i_bseg-vbewa NE '0700' ) AND ( i_bseg-vbewa NE '0800' ) AND
+        ( i_bseg-vbewa NE '0900' ) AND ( i_bseg-vbewa NE '1000' ) ) OR
+       ( ( ( i_bseg-vbewa EQ '0700' ) OR ( i_bseg-vbewa EQ '0800' ) OR
+            ( i_bseg-vbewa EQ '0900' ) OR ( i_bseg-vbewa EQ '1000' ) )
+             AND ( i_bseg-koart EQ 'D' ) ).
+
+* RCONDE - Alteracao em 14032001
+*      if i_bseg-shkzg = 'S'.
+      IF cliente-dmbtr => '0' .
+        newbs = '01'.
+      ELSE.
+        newbs = '11'.
+        cliente-dmbtr = cliente-dmbtr * -1 .
+      ENDIF.
+      newko = cliente-kunnr.
+      newum = ' '.
+      tela = '0301'.
+    ELSE.
+
+      newbs = '40'.
+      newko = i_bseg-verrktmv.
+      newum = ' '.
+      tela = '0300'.
+
+    ENDIF.
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0122'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '/00'.
+
+    WRITE i_bseg-bldat TO date.
+
+    PERFORM bdc_field       USING 'BKPF-BLDAT'
+                                   date.
+
+    IF ( ( i_bseg-vbewa EQ '0700' ) OR ( i_bseg-vbewa EQ '0800' ) OR
+         ( i_bseg-vbewa EQ '0900' ) OR ( i_bseg-vbewa EQ '1000' ) )
+         AND ( i_bseg-koart <> 'D' ).
+
+      PERFORM bdc_field       USING 'BKPF-BLART'
+                                    'SX'.
+    ELSE.
+      IF newbs = '01'.
+        PERFORM bdc_field       USING 'BKPF-BLART'
+                                    'DL'.
+      ENDIF.
+      IF newbs = '11'.
+        PERFORM bdc_field       USING 'BKPF-BLART'
+                                    'DG'.
+      ENDIF.
+    ENDIF.
+
+    IF ( i_bseg-bukrs = 'SH02' ) AND
+       ( i_bseg-vbewa = '1300' OR i_bseg-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+         OR i_bseg-vbewa = '8000' ).
+      PERFORM bdc_field       USING 'BKPF-BUKRS'
+                                    'SH02'.
+    ELSE.
+
+      PERFORM bdc_field       USING 'BKPF-BUKRS'
+                                    i_bseg-bukrs.
+    ENDIF.
+
+    WRITE i_bseg-budat TO date.
+
+    PERFORM bdc_field       USING 'BKPF-BUDAT'
+                                  date.
+    PERFORM bdc_field       USING 'BKPF-WAERS'
+                                  'BRL'.
+
+    IF ( i_bseg-vbewa EQ '0700' ) OR ( i_bseg-vbewa EQ '0800' ) OR
+       ( i_bseg-vbewa EQ '0900' ) OR ( i_bseg-vbewa EQ '1000' ).
+      CONCATENATE 'Enc. Esp' date INTO xblnr.
+    ELSE.
+      IF i_bseg-vbewa+3(1) = '7'.
+        CONCATENATE 'Enc. LV' date INTO xblnr.
+      ELSE.
+        CONCATENATE 'Subsídio' date INTO xblnr.
+      ENDIF.
+    ENDIF.
+
+    PERFORM bdc_field       USING 'BKPF-XBLNR'
+                                  xblnr.
+
+*   concatenate 'Lojas Vagas (' i_bseg-bldat+4(2) ')' into bktxt.
+
+
+    PERFORM bdc_field       USING 'BKPF-BKTXT'
+                                  xblnr.
+    PERFORM bdc_field       USING 'RF05A-NEWBS'
+                                  newbs.
+    PERFORM bdc_field       USING 'RF05A-NEWKO'
+                                  newko.
+    PERFORM bdc_field       USING 'RF05A-NEWUM'
+                                  newum.
+
+
+*   perform bdc_field       using 'RF05A-XPOS1(03)'
+*                                 'X'.
+    PERFORM bdc_field       USING 'RF05A-XPOS1(04)'
+                                  'X'.
+
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' tela.
+
+* RCONDE - Alteracao em 08032001
+    IF tela = '0301'. " CLIENTE
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '=ZK'.
+    ELSE.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '=SL'.
+
+    ENDIF.
+* RCONDE - Alteracao em 08032001
+
+    WRITE cliente-dmbtr TO valor CURRENCY 'BRE'.
+
+    PERFORM bdc_field       USING 'BSEG-WRBTR'
+                                  valor.
+
+*   if i_bseg-tcode ne 'FON2'.
+    IF ( ( i_bseg-vbewa NE '0700' ) AND ( i_bseg-vbewa NE '0800' ) AND
+        ( i_bseg-vbewa NE '0900' ) AND ( i_bseg-vbewa NE '1000' ) ) OR
+       ( ( ( i_bseg-vbewa EQ '0700' ) OR ( i_bseg-vbewa EQ '0800' ) OR
+            ( i_bseg-vbewa EQ '0900' ) OR ( i_bseg-vbewa EQ '1000' ) )
+             AND ( i_bseg-koart EQ 'D' ) ).
+
+      PERFORM bdc_field       USING 'BSEG-GSBER'
+                                    i_bseg-gsber.
+
+      WRITE cliente-zfbdt TO date.
+
+      PERFORM bdc_field       USING 'BSEG-ZFBDT'
+                                    v_dt_venc.
+
+* Alteração Gabriel - 12/12/2008
+
+      PERFORM bdc_field       USING 'BSEG-ZLSCH' 'D'.
+
+      SELECT SINGLE hbkid
+      INTO lv_hbkid
+      FROM zfi_bco_divisao
+      WHERE bukrs EQ i_bseg-bukrs
+      AND   gsber EQ i_bseg-gsber
+      AND   zprio EQ '1'.
+
+* Fim Alteração Gabriel - 12/12/2008
+
+*      perform bdc_field       using 'DKACB-FMORE'
+*                                    ' '.
+    ELSE.
+
+*        perform bdc_field       using 'DKACB-FMORE'
+*                                      'X'.
+
+      PERFORM bdc_dynpro      USING 'SAPLKACB' '0002'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      PERFORM bdc_field       USING 'COBL-GSBER'
+                                    i_bseg-gsber.
+
+    ENDIF.
+
+* RCONDE - Alteracao em 08032001
+* Somente qdo for CLIENTE
+    IF newbs EQ '01' OR newbs EQ '11'.
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0331'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                      '=SL'.
+
+      PERFORM bdc_field       USING 'BSEG-FIPOS'
+                                    's001'.
+
+* Alteração Gabriel - 12/12/2008
+
+      PERFORM bdc_field       USING 'BSEG-HBKID'
+                                    lv_hbkid.
+
+* Fim Alteração Gabriel - 12/12/2008
+
+    ENDIF.
+* RCONDE - Alteracao em 08032001
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0710'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+*                                   '=PA'.
+                                  '/05'.
+    PERFORM bdc_field       USING 'RF05A-AGBUK'
+                                  i_bseg-bukrs.
+
+    aux_i_bseg[] = i_bseg[].
+
+    SORT aux_i_bseg BY hkont intnum.
+
+    DELETE ADJACENT DUPLICATES FROM aux_i_bseg COMPARING hkont intnum.
+
+    READ TABLE aux_i_bseg WITH KEY intnum = cliente-intnum INTO i_bseg.
+
+    IF ( ( i_bseg-vbewa NE '0700' ) AND ( i_bseg-vbewa NE '0800' ) AND
+         ( i_bseg-vbewa NE '0900' ) AND ( i_bseg-vbewa NE '1000' ) AND
+           ( i_bseg-vbewa+3(1) NE '7' ) ) OR
+       ( ( ( i_bseg-vbewa EQ '0700' ) OR ( i_bseg-vbewa EQ '0800' ) OR
+            ( i_bseg-vbewa EQ '0900' ) OR ( i_bseg-vbewa EQ '1000' ) )
+             AND ( i_bseg-koart EQ 'D' ) ).
+
+      PERFORM bdc_field       USING 'RF05A-AGKON'
+                                    i_bseg-kunnr.
+
+      PERFORM bdc_field       USING 'RF05A-AGKOA'
+                                    'D'.
+
+      PERFORM bdc_field       USING 'RF05A-AGUMS'
+                                    'KUV'.
+
+      PERFORM bdc_field       USING 'RF05A-XNOPS'
+                                    ' '.
+      PERFORM bdc_field       USING 'RF05A-XMULK'
+                                    'X'.
+
+*     perform bdc_field       using 'RF05A-XPOS1(03)'
+*                                   'X'.
+      PERFORM bdc_field       USING 'RF05A-XPOS1(04)'
+                                  'X'.
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0609'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '=GO'.
+    ELSE.
+      IF ( ( i_bseg-vbewa EQ '0700' ) OR ( i_bseg-vbewa EQ '0800' ) OR
+            ( i_bseg-vbewa EQ '0900' ) OR ( i_bseg-vbewa EQ '1000' ) )
+          AND ( i_bseg-koart NE 'D' ).
+
+
+        PERFORM bdc_field       USING 'RF05A-AGKON'
+                                      i_bseg-verrktme.
+
+        PERFORM bdc_field       USING 'RF05A-AGKOA'
+                                      'S'.
+        PERFORM bdc_field       USING 'RF05A-XNOPS'
+                                      'X'.
+        PERFORM bdc_field       USING 'RF05A-XMULK'
+                                      'X'.
+
+*     perform bdc_field       using 'RF05A-XPOS1(03)'
+*                                   'X'.
+        PERFORM bdc_field       USING 'RF05A-XPOS1(04)'
+                                    'X'.
+        PERFORM bdc_dynpro      USING 'SAPMF05A' '0609'.
+        PERFORM bdc_field       USING 'BDC_OKCODE'
+                                      '=GO'.
+      ELSE.
+        PERFORM bdc_field       USING 'RF05A-AGKON'
+                                      c_lojas_vagas.
+
+        PERFORM bdc_field       USING 'RF05A-AGKOA'
+                                      'S'.
+        PERFORM bdc_field       USING 'RF05A-XNOPS'
+                                      'X'.
+        PERFORM bdc_field       USING 'RF05A-XMULK'
+                                      'X'.
+
+*     perform bdc_field       using 'RF05A-XPOS1(03)'
+*                                   'X'.
+        PERFORM bdc_field       USING 'RF05A-XPOS1(04)'
+                                    'X'.
+        PERFORM bdc_dynpro      USING 'SAPMF05A' '0609'.
+        PERFORM bdc_field       USING 'BDC_OKCODE'
+                                      '=GO'.
+
+      ENDIF.
+
+    ENDIF.
+
+    num = '000'.
+
+    LOOP AT aux_i_bseg WHERE intnum = cliente-intnum.
+
+      IF num NE '000'.
+
+        CONCATENATE 'RF05A-AGKON(' num ')' INTO valor.
+
+        PERFORM bdc_field       USING valor
+                                      aux_i_bseg-hkont.
+
+        CONCATENATE 'RF05A-AGKOA(' num ')' INTO valor.
+
+        PERFORM bdc_field       USING valor
+                                      'S'.
+
+        CONCATENATE 'RF05A-AGBUK(' num ')' INTO valor.
+
+        PERFORM bdc_field       USING valor
+                                      aux_i_bseg-bukrs.
+
+        CONCATENATE 'RF05A-XNOPS(' num ')' INTO valor.
+
+        PERFORM bdc_field       USING valor
+                                      'X'.
+
+      ENDIF.
+
+      ADD 1 TO num.
+      UNPACK num TO num.
+
+    ENDLOOP.
+
+*   perform bdc_dynpro      using 'SAPMF05A' '0731'.
+*   perform bdc_field       using 'BDC_OKCODE'
+*                                 '=PA'.
+    aux_i_bseg[] = i_bseg[].
+
+    SORT aux_i_bseg BY belnr intnum.
+
+* RCONDE - ALTERACAO EM 08032001
+*    delete adjacent duplicates from aux_i_bseg comparing belnr intnum.
+
+    num = '01'.
+
+    LOOP AT aux_i_bseg WHERE intnum EQ cliente-intnum.
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0733'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+*        perform bdc_dynpro      using 'SAPMF05A' '0731'.
+*        perform bdc_field       using 'BDC_OKCODE'
+*                                        '/00'.
+
+*     concatenate 'RF05A-SEL01(' num ')' into valor.
+
+*       move 'RF05A-SEL01(01)' to valor.
+
+      CLEAR: valor2.
+      CONCATENATE aux_i_bseg-belnr aux_i_bseg-gjahr aux_i_bseg-buzei
+      INTO valor2.
+
+      PERFORM bdc_field       USING 'RF05A-FELDN(01)' 'BELNR'.
+      PERFORM bdc_field       USING 'RF05A-SEL01(01)' valor2.
+      PERFORM bdc_field       USING 'RF05A-SEL02(01)' valor2.
+
+*       move 'RF05A-FEDLN01(01)' to valor.
+
+*       perform bdc_field       using valor
+*                                     aux_i_bseg-belnr.
+      ADD 1 TO num.
+      UNPACK num TO num.
+    ENDLOOP.
+
+*     perform bdc_dynpro      using 'SAPMF05A' '0731'.
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0733'.
+
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '=PA'.
+
+    PERFORM bdc_dynpro      USING 'SAPDF05X' '3100'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  'OMX'.
+
+    PERFORM bdc_dynpro      USING 'SAPDF05X' '3100'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  'Z+'.
+
+    PERFORM bdc_dynpro      USING 'SAPDF05X' '3100'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '/11'.
+
+* >>> RLH - Alterações - 18/07/2011 - Início
+*    PERFORM bdc_transaction USING 'F-30'.
+    PERFORM call_transaction USING 'F-30'.
+* <<< RLH - Alterações - 18/07/2011 - Fim
+
+*   if i_bseg-tcode ne 'FON2'.
+    IF ( ( i_bseg-vbewa NE '0700' ) AND ( i_bseg-vbewa NE '0800' ) AND
+        ( i_bseg-vbewa NE '0900' ) AND ( i_bseg-vbewa NE '1000' ) ) OR
+       ( ( ( i_bseg-vbewa EQ '0700' ) OR ( i_bseg-vbewa EQ '0800' ) OR
+            ( i_bseg-vbewa EQ '0900' ) OR ( i_bseg-vbewa EQ '1000' ) )
+             AND ( i_bseg-koart EQ 'D' ) ).
+      DELETE cliente.
+    ENDIF.
+
+  ENDLOOP.
+
+* Lançar no cliente
+
+  SORT cliente BY zfbdt.
+
+  first = 'X'.
+
+* Aleração - Gabriel - 01/09/09
+
+*  LOOP AT cliente.
+  LOOP AT cliente WHERE kunnr BETWEEN '0000300000'
+                              AND     '0000399000'.
+
+* Fim Alteração - Gabriel - 01/09/09
+
+    MOVE cliente-kunnr TO v_ult_kunnr.
+    READ TABLE i_bseg WITH KEY intnum = cliente-intnum.
+    MOVE i_bseg-gsber TO v_ult_gsber.
+
+    IF first EQ 'X'.
+
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0100'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      WRITE i_bseg-bldat TO date.
+
+
+      PERFORM bdc_field       USING 'BKPF-BLDAT'
+                                    date.
+      PERFORM bdc_field       USING 'BKPF-BLART'
+                                    'DL'.
+*      if v_bukrs = 'SH22'.
+*        move v_bukrs to i_bseg-bukrs.
+*      endif.
+
+      IF ( i_bseg-bukrs = 'SH02' ) AND
+         ( i_bseg-vbewa = '1300' OR i_bseg-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+           OR i_bseg-vbewa = '8000' ).
+
+        PERFORM bdc_field       USING 'BKPF-BUKRS'
+                                      'SH02'.
+      ELSE.
+
+        PERFORM bdc_field       USING 'BKPF-BUKRS'
+                                      i_bseg-bukrs.
+      ENDIF.
+
+      WRITE i_bseg-budat TO date.
+
+
+      PERFORM bdc_field       USING 'BKPF-BUDAT'
+                                    date.
+      PERFORM bdc_field       USING 'BKPF-MONAT'
+                                    i_bseg-budat+4(2).
+      PERFORM bdc_field       USING 'BKPF-WAERS'
+                                    'brl'.
+
+      IF ( i_bseg-bukrs = 'SH02' ) AND
+         ( i_bseg-vbewa = '1300' OR i_bseg-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+           OR i_bseg-vbewa = '8000' ).
+        MOVE 'Subsídio FP' TO xblnr.
+      ELSE.
+ CONCATENATE 'LV-EC' i_bseg-budat+4(2) '/' i_bseg-budat+0(4) INTO xblnr.
+      ENDIF.
+
+      PERFORM bdc_field       USING 'BKPF-XBLNR'
+                                    xblnr.
+      PERFORM bdc_field       USING 'BKPF-BKTXT'
+                                    xblnr.
+
+      CLEAR first.
+    ENDIF.
+
+    IF ( i_bseg-bukrs = 'SH02' ) AND
+       ( i_bseg-vbewa = '1300' OR i_bseg-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+         OR i_bseg-vbewa = '8000' ).
+      i_bseg-kostkto = c_fundo_promocao.
+    ELSE.
+      IF i_bseg-kostkto+0(1) EQ 'Z'.
+        i_bseg-kostkto+0(1) = '2'.
+      ELSE.
+        i_bseg-kostkto+2(1) = i_bseg-kostkto+2(1) - 4.
+      ENDIF.
+    ENDIF.
+
+    PERFORM bdc_field       USING 'RF05A-NEWBS'
+                                  '50'.
+    PERFORM bdc_field       USING 'RF05A-NEWKO'
+                                  i_bseg-kostkto.
+    PERFORM bdc_field       USING 'RF05A-NEWUM'
+                                  ' '.
+
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0300'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '/00'.
+
+    WRITE cliente-dmbtr TO valor CURRENCY 'BRL'.
+
+    PERFORM bdc_field       USING 'BSEG-WRBTR'
+                                  valor.
+
+    IF i_bseg-kostkto+0(1) NE '2'.
+
+
+      PERFORM bdc_dynpro      USING 'SAPLKACB' '0002'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      PERFORM bdc_field       USING 'COBL-GSBER'
+                                    v_ult_gsber.
+      PERFORM bdc_field       USING 'COBL-PRCTR'
+                                    viob01-prctr.
+
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0300'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      PERFORM bdc_field       USING 'DKACB-FMORE' ' '.
+
+    ELSE.
+
+      PERFORM bdc_dynpro      USING 'SAPLKACB' '0002'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      PERFORM bdc_field       USING 'COBL-GSBER'
+                                    v_ult_gsber.
+
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0300'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+
+    ENDIF.
+
+
+
+
+
+
+    AT END OF zfbdt.
+
+      PERFORM bdc_field       USING 'RF05A-NEWBS'
+                                    '01'.
+      PERFORM bdc_field       USING 'RF05A-NEWKO'
+                                    v_ult_kunnr.
+      PERFORM bdc_field       USING 'RF05A-NEWUM'
+                                    ' '.
+
+
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0301'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/11'.
+      PERFORM bdc_field       USING 'BSEG-ZFBDT'
+                                    v_dt_venc.
+
+      IF ( i_bseg-bukrs = 'SH02' ) AND
+         ( i_bseg-vbewa = '1300' OR i_bseg-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+           OR i_bseg-vbewa = '8000' ).
+        CLEAR: it_desc_meses.
+        READ TABLE it_desc_meses WITH KEY monat = date+4(2).
+
+        MOVE 'Fundo de Promoção ' TO v_mensagem.
+
+        PERFORM bdc_field       USING 'BSEG-SGTXT'
+          v_mensagem.
+
+        PERFORM bdc_field       USING 'RF05A-NEWKO'
+                                      v_ult_kunnr.
+
+*       perform bdc_field       using 'BSEG-ZUONR'
+*                                     i_bseg-vertn.
+
+        PERFORM bdc_field       USING 'BSEG-VBEWA'
+                                      i_bseg-vbewa.
+      ELSE.
+        PERFORM bdc_field       USING 'BSEG-SGTXT'
+                                      c_mensagem.
+      ENDIF.
+
+      PERFORM bdc_field       USING 'BSEG-WRBTR'
+                                    '*'.
+      PERFORM bdc_field       USING 'BSEG-GSBER'
+                                    v_ult_gsber.
+
+* >>> RLH - Alterações - 18/07/2011 - Início
+*    PERFORM bdc_transaction USING 'F-02'.
+      PERFORM call_transaction USING 'F-02'.
+* <<< RLH - Alterações - 18/07/2011 - Fim
+
+      first = 'X'.
+
+    ENDAT.
+
+  ENDLOOP.
+
+* Alteração - Gabriel - 29/04/09
+
+  SORT cliente_1300 BY zfbdt.
+
+* Aleração - Gabriel - 01/09/09
+
+*  LOOP AT cliente_1300.
+  LOOP AT cliente_1300 WHERE kunnr BETWEEN '0000300000'
+                                   AND     '0000399000'.
+
+* Fim Alteração - Gabriel - 01/09/09
+
+    READ TABLE i_bseg_1300 WITH KEY intnum = cliente-intnum.
+
+*    if i_bseg_1300-tcode ne 'FON2'.
+*
+*      newbs = '09'.
+*      newko = cliente-kunnr.
+*      newum = 'k'.
+*
+*    else.
+*
+*      newbs = '40'.
+*      newko = i_bseg_1300-verrktmv.
+*      newum = ' '.
+*
+*    endif.
+    MOVE cliente_1300-kunnr TO v_ult_kunnr.
+    MOVE i_bseg_1300-gsber TO v_ult_gsber.
+
+    IF ( ( i_bseg_1300-vbewa NE '0700' ) AND ( i_bseg_1300-vbewa NE
+'0800' ) AND
+        ( i_bseg_1300-vbewa NE '0900' ) AND ( i_bseg_1300-vbewa NE
+'1000' ) ) OR
+       ( ( ( i_bseg_1300-vbewa EQ '0700' ) OR ( i_bseg_1300-vbewa EQ
+'0800' ) OR
+            ( i_bseg_1300-vbewa EQ '0900' ) OR ( i_bseg_1300-vbewa EQ
+'1000' ) )
+             AND ( i_bseg_1300-koart EQ 'D' ) ).
+
+* RCONDE - Alteracao em 14032001
+*      if i_bseg_1300-shkzg = 'S'.
+      IF cliente_1300-dmbtr => '0' .
+        newbs = '01'.
+      ELSE.
+        newbs = '11'.
+        cliente_1300-dmbtr = cliente_1300-dmbtr * -1 .
+      ENDIF.
+      newko = cliente_1300-kunnr.
+      newum = ' '.
+      tela = '0301'.
+    ELSE.
+
+      newbs = '40'.
+      newko = i_bseg_1300-verrktmv.
+      newum = ' '.
+      tela = '0300'.
+
+    ENDIF.
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0122'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '/00'.
+
+    WRITE i_bseg_1300-bldat TO date.
+
+    PERFORM bdc_field       USING 'BKPF-BLDAT'
+                                   date.
+
+    IF ( ( i_bseg_1300-vbewa EQ '0700' ) OR ( i_bseg_1300-vbewa EQ
+'0800' ) OR
+         ( i_bseg_1300-vbewa EQ '0900' ) OR ( i_bseg_1300-vbewa EQ
+'1000' ) )
+         AND ( i_bseg_1300-koart <> 'D' ).
+
+      PERFORM bdc_field       USING 'BKPF-BLART'
+                                    'SX'.
+    ELSE.
+      IF newbs = '01'.
+        PERFORM bdc_field       USING 'BKPF-BLART'
+                                    'DL'.
+      ENDIF.
+      IF newbs = '11'.
+        PERFORM bdc_field       USING 'BKPF-BLART'
+                                    'DG'.
+      ENDIF.
+    ENDIF.
+
+    IF ( i_bseg_1300-bukrs = 'SH02' ) AND
+       ( i_bseg_1300-vbewa = '1300' OR i_bseg_1300-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+         OR i_bseg_1300-vbewa = '8000' ).
+      PERFORM bdc_field       USING 'BKPF-BUKRS'
+                                    'SH02'.
+    ELSE.
+
+      PERFORM bdc_field       USING 'BKPF-BUKRS'
+                                    i_bseg_1300-bukrs.
+    ENDIF.
+
+    WRITE i_bseg_1300-budat TO date.
+
+    PERFORM bdc_field       USING 'BKPF-BUDAT'
+                                  date.
+    PERFORM bdc_field       USING 'BKPF-WAERS'
+                                  'BRL'.
+
+    IF ( i_bseg_1300-vbewa EQ '0700' ) OR ( i_bseg_1300-vbewa EQ '0800'
+) OR
+       ( i_bseg_1300-vbewa EQ '0900' ) OR ( i_bseg_1300-vbewa EQ '1000'
+).
+      CONCATENATE 'Enc. Esp' date INTO xblnr.
+    ELSE.
+      IF i_bseg_1300-vbewa+3(1) = '7'.
+        CONCATENATE 'Enc. LV' date INTO xblnr.
+      ELSE.
+        CONCATENATE 'Subsídio' date INTO xblnr.
+      ENDIF.
+    ENDIF.
+
+    PERFORM bdc_field       USING 'BKPF-XBLNR'
+                                  xblnr.
+
+*   concatenate 'Lojas Vagas (' i_bseg_1300-bldat+4(2) ')' into bktxt.
+
+
+    PERFORM bdc_field       USING 'BKPF-BKTXT'
+                                  xblnr.
+    PERFORM bdc_field       USING 'RF05A-NEWBS'
+                                  newbs.
+    PERFORM bdc_field       USING 'RF05A-NEWKO'
+                                  newko.
+    PERFORM bdc_field       USING 'RF05A-NEWUM'
+                                  newum.
+
+
+*   perform bdc_field       using 'RF05A-XPOS1(03)'
+*                                 'X'.
+    PERFORM bdc_field       USING 'RF05A-XPOS1(04)'
+                                  'X'.
+
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' tela.
+
+* RCONDE - Alteracao em 08032001
+    IF tela = '0301'. " CLIENTE
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '=ZK'.
+    ELSE.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '=SL'.
+
+    ENDIF.
+* RCONDE - Alteracao em 08032001
+
+    WRITE cliente_1300-dmbtr TO valor CURRENCY 'BRE'.
+
+    PERFORM bdc_field       USING 'BSEG-WRBTR'
+                                  valor.
+
+*   if i_bseg_1300-tcode ne 'FON2'.
+    IF ( ( i_bseg_1300-vbewa NE '0700' ) AND ( i_bseg_1300-vbewa NE
+'0800' ) AND
+        ( i_bseg_1300-vbewa NE '0900' ) AND ( i_bseg_1300-vbewa NE
+'1000' ) ) OR
+       ( ( ( i_bseg_1300-vbewa EQ '0700' ) OR ( i_bseg_1300-vbewa EQ
+'0800' ) OR
+            ( i_bseg_1300-vbewa EQ '0900' ) OR ( i_bseg_1300-vbewa EQ
+'1000' ) )
+             AND ( i_bseg_1300-koart EQ 'D' ) ).
+
+      PERFORM bdc_field       USING 'BSEG-GSBER'
+                                    i_bseg_1300-gsber.
+
+      WRITE cliente_1300-zfbdt TO date.
+
+      PERFORM bdc_field       USING 'BSEG-ZFBDT'
+                                    v_dt_venc.
+
+* Alteração Gabriel - 12/12/2008
+
+      PERFORM bdc_field       USING 'BSEG-ZLSCH' 'D'.
+
+      SELECT SINGLE hbkid
+      INTO lv_hbkid
+      FROM zfi_bco_divisao
+      WHERE bukrs EQ i_bseg_1300-bukrs
+      AND   gsber EQ i_bseg_1300-gsber
+      AND   zprio EQ '1'.
+
+* Fim Alteração Gabriel - 12/12/2008
+
+*      perform bdc_field       using 'DKACB-FMORE'
+*                                    ' '.
+    ELSE.
+
+*        perform bdc_field       using 'DKACB-FMORE'
+*                                      'X'.
+
+      PERFORM bdc_dynpro      USING 'SAPLKACB' '0002'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      PERFORM bdc_field       USING 'COBL-GSBER'
+                                    i_bseg_1300-gsber.
+
+    ENDIF.
+
+* RCONDE - Alteracao em 08032001
+* Somente qdo for CLIENTE
+    IF newbs EQ '01' OR newbs EQ '11'.
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0331'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                      '=SL'.
+
+      PERFORM bdc_field       USING 'BSEG-FIPOS'
+                                    's001'.
+
+* Alteração Gabriel - 12/12/2008
+
+      PERFORM bdc_field       USING 'BSEG-HBKID'
+                                    lv_hbkid.
+
+* Fim Alteração Gabriel - 12/12/2008
+
+    ENDIF.
+* RCONDE - Alteracao em 08032001
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0710'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+*                                   '=PA'.
+                                  '/05'.
+    PERFORM bdc_field       USING 'RF05A-AGBUK'
+                                  i_bseg_1300-bukrs.
+
+    aux_i_bseg[] = i_bseg[].
+
+    SORT aux_i_bseg BY hkont intnum.
+
+    DELETE ADJACENT DUPLICATES FROM aux_i_bseg COMPARING hkont intnum.
+
+    READ TABLE aux_i_bseg WITH KEY intnum = cliente_1300-intnum INTO
+i_bseg.
+
+    IF ( ( i_bseg_1300-vbewa NE '0700' ) AND ( i_bseg_1300-vbewa NE
+'0800' ) AND
+         ( i_bseg_1300-vbewa NE '0900' ) AND ( i_bseg_1300-vbewa NE
+'1000' ) AND
+           ( i_bseg_1300-vbewa+3(1) NE '7' ) ) OR
+       ( ( ( i_bseg_1300-vbewa EQ '0700' ) OR ( i_bseg_1300-vbewa EQ
+'0800' ) OR
+            ( i_bseg_1300-vbewa EQ '0900' ) OR ( i_bseg_1300-vbewa EQ
+'1000' ) )
+             AND ( i_bseg_1300-koart EQ 'D' ) ).
+
+      PERFORM bdc_field       USING 'RF05A-AGKON'
+                                    i_bseg_1300-kunnr.
+
+      PERFORM bdc_field       USING 'RF05A-AGKOA'
+                                    'D'.
+
+      PERFORM bdc_field       USING 'RF05A-AGUMS'
+                                    'KUV'.
+
+      PERFORM bdc_field       USING 'RF05A-XNOPS'
+                                    ' '.
+      PERFORM bdc_field       USING 'RF05A-XMULK'
+                                    'X'.
+
+*     perform bdc_field       using 'RF05A-XPOS1(03)'
+*                                   'X'.
+      PERFORM bdc_field       USING 'RF05A-XPOS1(04)'
+                                  'X'.
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0609'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '=GO'.
+    ELSE.
+      IF ( ( i_bseg_1300-vbewa EQ '0700' ) OR ( i_bseg_1300-vbewa EQ
+'0800' ) OR
+            ( i_bseg_1300-vbewa EQ '0900' ) OR ( i_bseg_1300-vbewa EQ
+'1000' ) )
+          AND ( i_bseg_1300-koart NE 'D' ).
+
+
+        PERFORM bdc_field       USING 'RF05A-AGKON'
+                                      i_bseg_1300-verrktme.
+
+        PERFORM bdc_field       USING 'RF05A-AGKOA'
+                                      'S'.
+        PERFORM bdc_field       USING 'RF05A-XNOPS'
+                                      'X'.
+        PERFORM bdc_field       USING 'RF05A-XMULK'
+                                      'X'.
+
+*     perform bdc_field       using 'RF05A-XPOS1(03)'
+*                                   'X'.
+        PERFORM bdc_field       USING 'RF05A-XPOS1(04)'
+                                    'X'.
+        PERFORM bdc_dynpro      USING 'SAPMF05A' '0609'.
+        PERFORM bdc_field       USING 'BDC_OKCODE'
+                                      '=GO'.
+      ELSE.
+        PERFORM bdc_field       USING 'RF05A-AGKON'
+                                      c_lojas_vagas.
+
+        PERFORM bdc_field       USING 'RF05A-AGKOA'
+                                      'S'.
+        PERFORM bdc_field       USING 'RF05A-XNOPS'
+                                      'X'.
+        PERFORM bdc_field       USING 'RF05A-XMULK'
+                                      'X'.
+
+*     perform bdc_field       using 'RF05A-XPOS1(03)'
+*                                   'X'.
+        PERFORM bdc_field       USING 'RF05A-XPOS1(04)'
+                                    'X'.
+        PERFORM bdc_dynpro      USING 'SAPMF05A' '0609'.
+        PERFORM bdc_field       USING 'BDC_OKCODE'
+                                      '=GO'.
+
+      ENDIF.
+
+    ENDIF.
+
+    num = '000'.
+
+    LOOP AT aux_i_bseg WHERE intnum = cliente_1300-intnum.
+
+      IF num NE '000'.
+
+        CONCATENATE 'RF05A-AGKON(' num ')' INTO valor.
+
+        PERFORM bdc_field       USING valor
+                                      aux_i_bseg-hkont.
+
+        CONCATENATE 'RF05A-AGKOA(' num ')' INTO valor.
+
+        PERFORM bdc_field       USING valor
+                                      'S'.
+
+        CONCATENATE 'RF05A-AGBUK(' num ')' INTO valor.
+
+        PERFORM bdc_field       USING valor
+                                      aux_i_bseg-bukrs.
+
+        CONCATENATE 'RF05A-XNOPS(' num ')' INTO valor.
+
+        PERFORM bdc_field       USING valor
+                                      'X'.
+
+      ENDIF.
+
+      ADD 1 TO num.
+      UNPACK num TO num.
+
+    ENDLOOP.
+
+*   perform bdc_dynpro      using 'SAPMF05A' '0731'.
+*   perform bdc_field       using 'BDC_OKCODE'
+*                                 '=PA'.
+    aux_i_bseg[] = i_bseg_1300[].
+
+    SORT aux_i_bseg BY belnr intnum.
+
+* RCONDE - ALTERACAO EM 08032001
+*    delete adjacent duplicates from aux_i_bseg comparing belnr intnum.
+
+    num = '01'.
+
+    LOOP AT aux_i_bseg WHERE intnum EQ cliente_1300-intnum.
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0733'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+*        perform bdc_dynpro      using 'SAPMF05A' '0731'.
+*        perform bdc_field       using 'BDC_OKCODE'
+*                                        '/00'.
+
+*     concatenate 'RF05A-SEL01(' num ')' into valor.
+
+*       move 'RF05A-SEL01(01)' to valor.
+
+      CLEAR: valor2.
+      CONCATENATE aux_i_bseg-belnr aux_i_bseg-gjahr aux_i_bseg-buzei
+      INTO valor2.
+
+      PERFORM bdc_field       USING 'RF05A-FELDN(01)' 'BELNR'.
+      PERFORM bdc_field       USING 'RF05A-SEL01(01)' valor2.
+      PERFORM bdc_field       USING 'RF05A-SEL02(01)' valor2.
+
+*       move 'RF05A-FEDLN01(01)' to valor.
+
+*       perform bdc_field       using valor
+*                                     aux_i_bseg_1300-belnr.
+      ADD 1 TO num.
+      UNPACK num TO num.
+    ENDLOOP.
+
+*     perform bdc_dynpro      using 'SAPMF05A' '0731'.
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0733'.
+
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '=PA'.
+
+    PERFORM bdc_dynpro      USING 'SAPDF05X' '3100'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  'OMX'.
+
+    PERFORM bdc_dynpro      USING 'SAPDF05X' '3100'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  'Z+'.
+
+    PERFORM bdc_dynpro      USING 'SAPDF05X' '3100'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '/11'.
+
+* >>> RLH - Alterações - 18/07/2011 - Início
+*    PERFORM bdc_transaction USING 'F-30'.
+    PERFORM call_transaction USING 'F-30'.
+* <<< RLH - Alterações - 18/07/2011 - Fim
+
+*   if i_bseg_1300-tcode ne 'FON2'.
+    IF ( ( i_bseg_1300-vbewa NE '0700' )
+    AND ( i_bseg_1300-vbewa NE '0800' )
+    AND ( i_bseg_1300-vbewa NE '0900' )
+    AND ( i_bseg_1300-vbewa NE '1000' ) )
+    OR  ( ( ( i_bseg_1300-vbewa EQ '0700' )
+    OR ( i_bseg_1300-vbewa EQ '0800' )
+    OR ( i_bseg_1300-vbewa EQ '0900' )
+    OR ( i_bseg_1300-vbewa EQ '1000' ) )
+    AND ( i_bseg_1300-koart EQ 'D' ) ).
+
+      DELETE cliente_1300.
+
+    ENDIF.
+
+  ENDLOOP.
+
+* Fim Alteração - Gabriel - 29/04/09
+
+* Lançar no cliente
+
+  SELECT SINGLE prctr FROM viob01 INTO viob01-prctr
+                                 WHERE bukrs EQ 'SH02'
+                                   AND swenr EQ p_swenr.
+
+  SORT cliente_1300 BY zfbdt.
+
+  first = 'X'.
+
+* Aleração - Gabriel - 01/09/09
+
+*  LOOP AT cliente_1300.
+  LOOP AT cliente_1300 WHERE kunnr BETWEEN '0000300000'
+                                   AND     '0000399000'.
+
+* Fim Alteração - Gabriel - 01/09/09
+
+    MOVE cliente_1300-kunnr TO v_ult_kunnr.
+    READ TABLE i_bseg_1300 WITH KEY intnum = cliente_1300-intnum.
+    MOVE i_bseg_1300-gsber TO v_ult_gsber.
+
+    IF first EQ 'X'.
+
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0100'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      WRITE i_bseg_1300-bldat TO date.
+
+
+      PERFORM bdc_field       USING 'BKPF-BLDAT'
+                                    date.
+      PERFORM bdc_field       USING 'BKPF-BLART'
+                                    'DL'.
+*      if v_bukrs = 'SH22'.
+*        move v_bukrs to i_bseg-bukrs.
+*      endif.
+
+      IF ( i_bseg_1300-bukrs = 'SH02' ) AND
+         ( i_bseg_1300-vbewa = '1300' OR i_bseg_1300-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+           OR i_bseg_1300-vbewa = '8000' ).
+        PERFORM bdc_field       USING 'BKPF-BUKRS'
+                                      'SH02'.
+      ELSE.
+
+        PERFORM bdc_field       USING 'BKPF-BUKRS'
+                                      i_bseg_1300-bukrs.
+      ENDIF.
+
+      WRITE i_bseg_1300-budat TO date.
+
+
+      PERFORM bdc_field       USING 'BKPF-BUDAT'
+                                    date.
+      PERFORM bdc_field       USING 'BKPF-MONAT'
+                                    i_bseg_1300-budat+4(2).
+      PERFORM bdc_field       USING 'BKPF-WAERS'
+                                    'brl'.
+
+      IF ( i_bseg_1300-bukrs = 'SH02' ) AND
+         ( i_bseg_1300-vbewa = '1300' OR i_bseg_1300-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+           OR i_bseg_1300-vbewa = '8000' ).
+        MOVE 'Subsídio FP' TO xblnr.
+      ELSE.
+        CONCATENATE 'LV-EC' i_bseg_1300-budat+4(2) '/'
+          i_bseg_1300-budat+0(4) INTO xblnr.
+      ENDIF.
+
+      PERFORM bdc_field       USING 'BKPF-XBLNR'
+                                    xblnr.
+      PERFORM bdc_field       USING 'BKPF-BKTXT'
+                                    xblnr.
+
+      CLEAR first.
+    ENDIF.
+
+    IF ( i_bseg_1300-bukrs = 'SH02' ) AND
+       ( i_bseg_1300-vbewa = '1300' OR i_bseg_1300-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+         OR i_bseg_1300-vbewa = '8000' ).
+      i_bseg_1300-kostkto = c_fundo_promocao.
+    ELSE.
+      IF i_bseg_1300-kostkto+0(1) EQ 'Z'.
+        i_bseg_1300-kostkto+0(1) = '2'.
+      ELSE.
+        i_bseg_1300-kostkto+2(1) = i_bseg_1300-kostkto+2(1) - 4.
+      ENDIF.
+    ENDIF.
+
+    PERFORM bdc_field       USING 'RF05A-NEWBS'
+                                  '50'.
+    PERFORM bdc_field       USING 'RF05A-NEWKO'
+                                  i_bseg_1300-kostkto.
+    PERFORM bdc_field       USING 'RF05A-NEWUM'
+                                  ' '.
+
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0300'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '/00'.
+
+    WRITE cliente_1300-dmbtr TO valor CURRENCY 'BRL'.
+
+    PERFORM bdc_field       USING 'BSEG-WRBTR'
+                                  valor.
+
+    IF i_bseg_1300-kostkto+0(1) NE '2'.
+
+
+      PERFORM bdc_dynpro      USING 'SAPLKACB' '0002'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      PERFORM bdc_field       USING 'COBL-GSBER'
+                                    v_ult_gsber.
+      PERFORM bdc_field       USING 'COBL-PRCTR'
+                                    viob01-prctr.
+
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0300'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      PERFORM bdc_field       USING 'DKACB-FMORE' ' '.
+
+    ELSE.
+
+      PERFORM bdc_dynpro      USING 'SAPLKACB' '0002'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+
+      PERFORM bdc_field       USING 'COBL-GSBER'
+                                    v_ult_gsber.
+
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0300'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/00'.
+    ENDIF.
+
+    AT END OF zfbdt.
+
+      PERFORM bdc_field       USING 'RF05A-NEWBS'
+                                    '01'.
+      PERFORM bdc_field       USING 'RF05A-NEWKO'
+                                    v_ult_kunnr.
+      PERFORM bdc_field       USING 'RF05A-NEWUM'
+                                    ' '.
+
+
+      PERFORM bdc_dynpro      USING 'SAPMF05A' '0301'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '/11'.
+      PERFORM bdc_field       USING 'BSEG-ZFBDT'
+                                    v_dt_venc.
+
+      IF ( i_bseg_1300-bukrs = 'SH02' ) AND
+         ( i_bseg_1300-vbewa = '1300' OR i_bseg_1300-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+           OR i_bseg_1300-vbewa = '8000' ).
+        CLEAR: it_desc_meses.
+        READ TABLE it_desc_meses WITH KEY monat = date+4(2).
+
+        MOVE 'Fundo de Promoção ' TO v_mensagem.
+
+        PERFORM bdc_field       USING 'BSEG-SGTXT'
+          v_mensagem.
+
+        PERFORM bdc_field       USING 'RF05A-NEWKO'
+                                      v_ult_kunnr.
+
+*       perform bdc_field       using 'BSEG-ZUONR'
+*                                     i_bseg_1300-vertn.
+
+        PERFORM bdc_field       USING 'BSEG-VBEWA'
+                                      i_bseg_1300-vbewa.
+      ELSE.
+        PERFORM bdc_field       USING 'BSEG-SGTXT'
+                                      c_mensagem.
+      ENDIF.
+
+      PERFORM bdc_field       USING 'BSEG-WRBTR'
+                                    '*'.
+      PERFORM bdc_field       USING 'BSEG-GSBER'
+                                    v_ult_gsber.
+
+* >>> RLH - Alterações - 18/07/2011 - Início
+** Alteração - Gabriel - 29/04/09
+*
+**      PERFORM bdc_transaction USING 'F-22'.
+*      PERFORM bdc_transaction USING 'F-02'.
+*
+** Fim Alteração - Gabriel - 29/04/09
+      PERFORM call_transaction USING 'F-02'.
+* <<< RLH - Alterações - 18/07/2011 - Fim
+
+      first = 'X'.
+
+    ENDAT.
+
+  ENDLOOP.
+
+ENDFORM.                  " generate_batch
+
+*&---------------------------------------------------------------------*
+*&      Form  show_list
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM show_list.
+  DATA: i_bseg_aux  LIKE i_bseg  OCCURS 0 WITH HEADER LINE,
+        cliente_aux LIKE cliente OCCURS 0 WITH HEADER LINE,
+        v_num_linhas TYPE i VALUE 0.
+
+* >>> RLH - Alterações - 18/07/2011 - Início
+*  cliente[] = cliente2[].
+*  cliente_1300[] = cliente2_1300[].
+* <<< RLH - Alterações - 18/07/2011 - Fim
+
+  DESCRIBE TABLE i_bseg_1300 LINES v_num_linhas.
+
+  IF p_rel_ul = 'X'.
+    PERFORM show_list_ul.
+    IF v_num_linhas > 0.
+      i_bseg_aux[] = i_bseg[].
+      cliente_aux[] = cliente[].
+      CLEAR: i_bseg.
+      REFRESH: i_bseg.
+      i_bseg[] = i_bseg_1300[].
+      CLEAR: cliente.
+      REFRESH: cliente.
+      cliente[] = cliente_1300[].
+      NEW-PAGE.
+
+      PERFORM show_list_ul.
+
+      CLEAR: i_bseg.
+      REFRESH: i_bseg.
+      i_bseg[] = i_bseg_aux[].
+      CLEAR: cliente.
+      REFRESH: cliente.
+      cliente[] = cliente_aux[].
+    ENDIF.
+  ELSE.
+    PERFORM show_list_vagas.
+    IF v_num_linhas > 0.
+      i_bseg_aux[] = i_bseg[].
+      cliente_aux[] = cliente[].
+      CLEAR: i_bseg.
+      REFRESH: i_bseg.
+      i_bseg[] = i_bseg_1300[].
+      CLEAR: cliente.
+      REFRESH: cliente.
+      cliente[] = cliente_1300[].
+      NEW-PAGE.
+
+      PERFORM show_list_vagas.
+
+      CLEAR: i_bseg.
+      REFRESH: i_bseg.
+      i_bseg[] = i_bseg_aux[].
+      CLEAR: cliente.
+      REFRESH: cliente.
+      cliente[] = cliente_aux[].
+    ENDIF.
+  ENDIF.
+
+* >>> RLH - Alterações - 18/07/2011 - Início
+** Alteração - Gabriel - 31/07/09
+*
+**  PERFORM finaliza_batch.
+*  PERFORM close_group.
+*
+** Fim Alteração - Gabriel - 31/07/09
+* <<< RLH - Alterações - 18/07/2011 - Fim
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  show_list
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM show_list_ul.
+  DATA: dmbtr_mod LIKE bseg-dmbtr VALUE 0,
+        total_pos LIKE bseg-dmbtr VALUE 0,
+        total_neg LIKE bseg-dmbtr VALUE 0,
+        total_mod LIKE bseg-dmbtr VALUE 0,
+        subtotal_pos LIKE bseg-dmbtr VALUE 0,
+        subtotal_neg LIKE bseg-dmbtr VALUE 0,
+        subtotal_mod LIKE bseg-dmbtr VALUE 0,
+        total_geral_pos LIKE bseg-dmbtr VALUE 0,
+        total_geral_neg LIKE bseg-dmbtr VALUE 0,
+        total_geral_mod LIKE bseg-dmbtr VALUE 0,
+        v_ult_smenr LIKE vimimv-smenr VALUE '',
+        v_ult_vbewa LIKE bseg-vbewa VALUE '',
+        v_novo_smenr VALUE 'S'.
+
+  SORT i_bseg BY smenr vbewa belnr.
+  CLEAR: itab.
+  REFRESH: itab.
+
+  LOOP AT i_bseg.
+
+    IF sy-tabix = 1.
+      SELECT SINGLE * FROM kna1
+      WHERE kunnr = i_bseg-kunnr.
+    ENDIF.
+
+    IF NOT ( i_bseg-smenr IS INITIAL ).
+      MOVE 'N' TO v_novo_smenr.
+    ENDIF.
+
+    IF ( i_bseg-smenr <> v_ult_smenr ) OR
+       ( i_bseg-vbewa <> v_ult_vbewa ) OR
+       ( v_novo_smenr = 'S' ).
+
+      IF ( ( NOT ( v_ult_smenr IS INITIAL ) ) OR
+           ( NOT ( v_ult_vbewa IS INITIAL ) ) ) OR
+           ( ( v_ult_smenr IS INITIAL ) AND
+             ( v_ult_vbewa IS INITIAL ) AND
+             ( sy-tabix > 1 ) ).
+
+        SORT itab BY vbewa belnr. " sempsl.
+
+        LOOP AT itab.
+
+          IF sy-tabix EQ 1.
+            WRITE:/ itab-name1.
+          ELSE.
+            WRITE:/ ' '.
+          ENDIF.
+
+          IF itab-shkzg = 'H'.
+            WRITE:  itab-belnr   UNDER 'N. Documento',
+                    itab-buzei   UNDER 'It',
+                    itab-smenr   UNDER 'UL',
+                    itab-zznmfan UNDER 'Nome fantasia',
+                    itab-xbewart UNDER 'Descritivo',
+                    itab-dmbtr   UNDER  '     Valor',
+                    '-',
+                    itab-sgtxt.
+          ELSE.
+            WRITE:  itab-belnr   UNDER 'N. Documento',
+                    itab-buzei   UNDER 'It',
+                    itab-smenr   UNDER 'UL',
+                    itab-zznmfan UNDER 'Nome fantasia',
+                    itab-xbewart UNDER 'Descritivo',
+                    itab-dmbtr   UNDER  '     Valor',
+                    ' ',
+                    itab-sgtxt.
+          ENDIF.
+
+          HIDE: itab-belnr, itab-gjahr.
+
+          WRITE AT: c_max_tela ' '.
+
+        ENDLOOP.
+
+        CLEAR: itab.
+        REFRESH: itab.
+        CLEAR: total_pos, total_neg.
+
+        IF ( i_bseg-smenr <> v_ult_smenr ) OR
+           ( ( v_ult_smenr IS INITIAL ) AND
+             ( sy-tabix > 1 ) ).
+
+          IF subtotal_pos > subtotal_neg.
+            subtotal_mod = subtotal_pos - subtotal_neg.
+          ELSE.
+            subtotal_mod = subtotal_neg - subtotal_pos.
+          ENDIF.
+
+          WRITE / sy-uline.
+          FORMAT COLOR COL_TOTAL.
+          WRITE:/30 'SUB-TOTAL',60 subtotal_mod.
+
+          IF subtotal_pos < subtotal_neg.
+            WRITE '-'.
+          ENDIF.
+          WRITE AT: c_max_tela ' '.
+          CLEAR: total_pos, total_neg, subtotal_pos, subtotal_neg.
+        ENDIF.
+      ENDIF.
+
+      IF ( i_bseg-smenr <> v_ult_smenr ) OR
+         ( v_ult_smenr IS INITIAL ).
+        WRITE / sy-uline.
+        FORMAT COLOR COL_KEY.
+*       write:/ 'Número Cliente'.
+*       write at: c_max_tela ' '.
+
+        WRITE:/ 'N. Documento', 15 'It', 25 'UL',
+            34 'Nome fantasia', 66 'Descritivo', 98 '     Valor', ' ',
+'                        Histórico do Documento'.
+
+*       write:/ 'Nome do Cliente', 40 'N. Documento', 65 'UL',
+*           74 'Nome fantasia', 106 'Descritivo', 138 'Valor', ' '.
+        WRITE AT: c_max_tela ' '.
+
+        FORMAT COLOR COL_NORMAL.
+*       write:/ kna1-name1 under 'Cliente'.
+
+*       write at: c_max_tela ' '.
+
+        CLEAR: total_pos, total_neg, subtotal_pos, subtotal_neg.
+      ENDIF.
+
+      MOVE i_bseg-smenr TO v_ult_smenr.
+      MOVE i_bseg-vbewa TO v_ult_vbewa.
+    ENDIF.
+
+*   move kna1-name1 to itab-name1.
+    MOVE-CORRESPONDING i_bseg TO itab.
+    APPEND itab.
+
+    IF i_bseg-shkzg = 'S'.
+      ADD i_bseg-dmbtr TO total_pos.
+    ELSE.
+      ADD i_bseg-dmbtr TO total_neg.
+    ENDIF.
+    IF i_bseg-shkzg = 'S'.
+      ADD i_bseg-dmbtr TO subtotal_pos.
+    ELSE.
+      ADD i_bseg-dmbtr TO subtotal_neg.
+    ENDIF.
+    IF i_bseg-shkzg = 'S'.
+      ADD i_bseg-dmbtr TO total_geral_pos.
+    ELSE.
+      ADD i_bseg-dmbtr TO total_geral_neg.
+    ENDIF.
+  ENDLOOP.
+  IF sy-subrc <> 4.
+
+    SORT itab BY vbewa belnr. " sempsl.
+
+    LOOP AT itab.
+
+      WRITE:/ ' '.
+
+
+      IF itab-shkzg = 'H'.
+
+        WRITE:  itab-belnr   UNDER 'N. Documento',
+                itab-buzei   UNDER 'It',
+                itab-smenr   UNDER 'UL',
+                itab-zznmfan UNDER 'Nome fantasia',
+                itab-xbewart UNDER 'Descritivo',
+                itab-dmbtr   UNDER  '     Valor',
+                '-',
+                itab-sgtxt.
+
+      ELSE.
+        WRITE:  itab-belnr   UNDER 'N. Documento',
+                itab-buzei   UNDER 'It',
+                itab-smenr   UNDER 'UL',
+                itab-zznmfan UNDER 'Nome fantasia',
+                itab-xbewart UNDER 'Descritivo',
+                itab-dmbtr   UNDER  '     Valor',
+                ' ',
+                itab-sgtxt.
+      ENDIF.
+
+      HIDE: itab-belnr, itab-gjahr.
+      WRITE AT: c_max_tela ' '.
+
+    ENDLOOP.
+
+    IF subtotal_pos > subtotal_neg.
+      subtotal_mod = subtotal_pos - subtotal_neg.
+    ELSE.
+      subtotal_mod = subtotal_neg - subtotal_pos.
+    ENDIF.
+
+    WRITE / sy-uline.
+    FORMAT COLOR COL_TOTAL.
+    WRITE:/30 'SUB-TOTAL',60 subtotal_mod.
+    IF subtotal_pos < subtotal_neg.
+      WRITE: '-'.
+    ENDIF.
+    WRITE AT: c_max_tela ' '.
+
+    IF total_geral_pos > total_geral_neg.
+      total_geral_mod = total_geral_pos - total_geral_neg.
+    ELSE.
+      total_geral_mod = total_geral_neg - total_geral_pos.
+    ENDIF.
+
+    WRITE / sy-uline.
+    FORMAT COLOR COL_TOTAL.
+    WRITE:/30 'TOTAL GERAL',60 total_geral_mod.
+    IF total_geral_pos < total_geral_neg.
+      WRITE: '-'.
+    ENDIF.
+    WRITE AT: c_max_tela ' '.
+  ENDIF.
+  CLEAR: itab.
+ENDFORM.                                                    " show_list
+*&---------------------------------------------------------------------*
+*&      Form  cabecalho
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM cabecalho.
+
+  FORMAT COLOR COL_HEADING.
+  WRITE / sy-uline.
+  WRITE:/ 'Empresa:', p_bukrs, 25 'Unidade Económica:',p_swenr,
+  55 sy-uname, sy-datum, sy-uzeit.
+  WRITE AT c_max_tela ' '.
+  WRITE: /'Cliente:', kna1-kunnr, '-', kna1-name1.
+  WRITE AT c_max_tela ' '.
+  WRITE / sy-uline.
+
+ENDFORM.                                                    " cabecalho
+*&---------------------------------------------------------------------*
+*&      Form  line-selection
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM line-selection.
+
+  IF ( NOT ( itab-belnr IS INITIAL ) ) AND
+     ( NOT ( itab-gjahr IS INITIAL ) ).
+    SET PARAMETER ID 'BUK' FIELD p_bukrs.
+    SET PARAMETER ID 'BLN' FIELD itab-belnr.
+    SET PARAMETER ID 'GJR' FIELD itab-gjahr.
+    CLEAR itab.
+    CALL TRANSACTION 'FB03' AND SKIP FIRST SCREEN.
+
+  ENDIF.
+
+ENDFORM.                    " line-selection
+
+*&---------------------------------------------------------------------*
+*&      Form  prepara_relatorio
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM prepara_relatorio.
+  DATA: n_vertn(13) TYPE n,
+        v_vertn LIKE bseg-vertn.
+
+  LOOP AT i_bseg.
+*   Resgata Descritivos dos tipos de movimento
+    CLEAR: it_tzb0t.
+    READ TABLE it_tzb0t WITH KEY sbewart = i_bseg-vbewa.
+    IF sy-subrc <> 0.
+      MOVE i_bseg-vbewa TO it_tzb0t-sbewart .
+      SELECT SINGLE xbewart INTO it_tzb0t-xbewart
+      FROM tzb0t
+      WHERE ( sspras = c_sspras1 ) AND
+            ( rantyp = c_rantyp ) AND
+            ( sbewart = i_bseg-vbewa ).
+      IF sy-subrc <> 0.
+        SELECT SINGLE xbewart INTO it_tzb0t-xbewart
+        FROM tzb0t
+        WHERE ( sspras = c_sspras2 ) AND
+              ( rantyp = c_rantyp ) AND
+              ( sbewart = i_bseg-vbewa ).
+      ENDIF.
+      APPEND it_tzb0t.
+    ENDIF.
+    MOVE it_tzb0t-xbewart TO i_bseg-xbewart.
+
+*   Buscar nomes de fantasia dos contratos
+    MOVE i_bseg-vertn TO n_vertn.
+    MOVE n_vertn TO v_vertn.
+    SELECT zznmfan INTO i_bseg-zznmfan UP TO 1 ROWS
+    FROM vimimv
+    WHERE ( bukrs = p_bukrs ) AND
+          ( smive = v_vertn ).
+    ENDSELECT.
+    MODIFY i_bseg.
+  ENDLOOP.
+
+  LOOP AT i_bseg_1300.
+*   Resgata Descritivos dos tipos de movimento
+    CLEAR: it_tzb0t.
+    READ TABLE it_tzb0t WITH KEY sbewart = i_bseg_1300-vbewa.
+    IF sy-subrc <> 0.
+      MOVE i_bseg_1300-vbewa TO it_tzb0t-sbewart .
+      SELECT SINGLE xbewart INTO it_tzb0t-xbewart
+      FROM tzb0t
+      WHERE ( sspras = c_sspras1 ) AND
+            ( rantyp = c_rantyp ) AND
+            ( sbewart = i_bseg_1300-vbewa ).
+      IF sy-subrc <> 0.
+        SELECT SINGLE xbewart INTO it_tzb0t-xbewart
+        FROM tzb0t
+        WHERE ( sspras = c_sspras2 ) AND
+              ( rantyp = c_rantyp ) AND
+              ( sbewart = i_bseg_1300-vbewa ).
+      ENDIF.
+      APPEND it_tzb0t.
+    ENDIF.
+    MOVE it_tzb0t-xbewart TO i_bseg_1300-xbewart.
+
+*   Buscar nomes de fantasia dos contratos
+    MOVE i_bseg_1300-vertn TO n_vertn.
+    MOVE n_vertn TO v_vertn.
+    SELECT zznmfan INTO i_bseg_1300-zznmfan UP TO 1 ROWS
+    FROM vimimv
+    WHERE ( bukrs = p_bukrs ) AND
+          ( smive = v_vertn ).
+    ENDSELECT.
+    MODIFY i_bseg_1300.
+  ENDLOOP.
+ENDFORM.                    " prepara_relatorio
+
+*&---------------------------------------------------------------------*
+*&      Form  show_list_vagas
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM show_list_vagas.
+  DATA: dmbtr_mod LIKE bseg-dmbtr VALUE 0,
+        total_pos LIKE bseg-dmbtr VALUE 0,
+        total_neg LIKE bseg-dmbtr VALUE 0,
+        total_mod LIKE bseg-dmbtr VALUE 0,
+        subtotal_pos LIKE bseg-dmbtr VALUE 0,
+        subtotal_neg LIKE bseg-dmbtr VALUE 0,
+        subtotal_mod LIKE bseg-dmbtr VALUE 0,
+        total_geral_pos LIKE bseg-dmbtr VALUE 0,
+        total_geral_neg LIKE bseg-dmbtr VALUE 0,
+        total_geral_mod LIKE bseg-dmbtr VALUE 0,
+        v_ult_smenr LIKE vimimv-smenr,
+        v_ult_vbewa LIKE bseg-vbewa,
+        v_novo_vbewa VALUE 'S',
+        v_primeira VALUE 'S'.
+
+  SORT i_bseg BY smenr vbewa belnr.
+
+  SORT cliente BY vbewa.
+
+  MOVE 'N' TO v_achou_bseg.
+  MOVE 'S' TO v_lojas_vagas.
+
+  DO 2 TIMES.
+    PERFORM trata_bseg.
+
+    IF v_linhas_bseg = 0.
+      PERFORM restaura_bseg.
+      IF v_lojas_vagas = 'S'.
+        MOVE 'N' TO v_lojas_vagas.
+      ENDIF.
+      CONTINUE.
+    ENDIF.
+
+    SORT i_bseg BY smenr vbewa belnr.
+
+    CLEAR: v_ult_vbewa.
+    MOVE 'S' TO v_mostrar_tit.
+    LOOP AT cliente.
+
+      IF sy-tabix = 1.
+        SELECT SINGLE * FROM kna1
+        WHERE kunnr = cliente-kunnr.
+      ENDIF.
+
+      READ TABLE i_bseg WITH KEY intnum = cliente-intnum.
+      IF sy-subrc <> 0.
+*       move cliente-vbewa to sv_cliente-vbewa.
+        CONTINUE.
+      ENDIF.
+
+      MOVE 'S' TO v_novo_vbewa.
+      MOVE 'S' TO v_primeira.
+      LOOP AT i_bseg.
+        IF i_bseg-intnum <> cliente-intnum.
+          CONTINUE.
+        ENDIF.
+
+        IF NOT ( i_bseg-vbewa IS INITIAL ).
+          MOVE 'N' TO v_novo_vbewa.
+        ENDIF.
+
+        IF v_mostrar_tit = 'S'.
+          PERFORM mostra_tipo.
+          MOVE 'N' TO v_mostrar_tit.
+        ENDIF.
+
+        IF ( i_bseg-vbewa <> v_ult_vbewa ) OR
+           ( v_novo_vbewa = 'S' ).
+
+          IF ( NOT ( v_ult_vbewa IS INITIAL ) ) OR
+             ( ( v_ult_vbewa IS INITIAL ) AND
+               ( v_primeira = 'N' ) ).
+
+            SORT itab BY vbewa belnr. " sempsl.
+            FORMAT COLOR COL_NORMAL.
+
+            LOOP AT itab.
+
+              IF sy-tabix EQ 1.
+                WRITE:/ ' '. "itab-name1.
+              ELSE.
+                WRITE:/ ' '.
+              ENDIF.
+
+              IF itab-shkzg = 'H'.
+
+                WRITE:  itab-belnr   UNDER 'N. Documento',
+                        itab-buzei   UNDER 'It',
+                        itab-smenr   UNDER 'UL',
+                        itab-zznmfan UNDER 'Nome fantasia',
+                        itab-xbewart UNDER 'Descritivo',
+                        itab-dmbtr   UNDER  '     Valor',
+                        '-',
+                        itab-sgtxt.
+              ELSE.
+                WRITE:  itab-belnr   UNDER 'N. Documento',
+                        itab-buzei   UNDER 'It',
+                        itab-smenr   UNDER 'UL',
+                        itab-zznmfan UNDER 'Nome fantasia',
+                        itab-xbewart UNDER 'Descritivo',
+                        itab-dmbtr   UNDER  '     Valor',
+                        ' ',
+                        itab-sgtxt.
+
+              ENDIF.
+
+              HIDE: itab-belnr, itab-gjahr.
+              WRITE AT: c_max_tela ' '.
+
+            ENDLOOP.
+
+            CLEAR: itab.
+            REFRESH: itab.
+
+            IF total_pos > total_neg.
+              total_mod = total_pos - total_neg.
+            ELSE.
+              total_mod = total_neg - total_pos.
+            ENDIF.
+
+            WRITE / sy-uline.
+            FORMAT COLOR COL_TOTAL.
+            WRITE:/30 'TOTAL',60 total_mod.
+
+            IF total_pos < total_neg.
+              WRITE '-'.
+            ENDIF.
+            WRITE AT: c_max_tela ' '.
+            CLEAR: total_pos, total_neg.
+          ENDIF.
+
+          IF ( i_bseg-vbewa <> v_ult_vbewa ) OR
+             ( v_ult_vbewa IS INITIAL ).
+
+            WRITE / sy-uline.
+            FORMAT COLOR COL_KEY.
+
+            WRITE:/ 'N. Documento', 15 'It', 25 'UL',
+              34 'Nome fantasia', 66 'Descritivo', 98 '     Valor', ' ',
+  '         Histório do Documento'.
+
+            WRITE AT: c_max_tela ' '.
+
+            FORMAT COLOR COL_NORMAL.
+
+          ENDIF.
+          MOVE i_bseg-vbewa TO v_ult_vbewa.
+        ENDIF.
+
+*       move kna1-name1 to itab-name1.
+        MOVE-CORRESPONDING i_bseg TO itab.
+        APPEND itab.
+
+        MOVE 'N' TO v_primeira.
+        IF i_bseg-shkzg = 'S'.
+          ADD i_bseg-dmbtr TO total_pos.
+          ADD i_bseg-dmbtr TO subtotal_pos.
+          ADD i_bseg-dmbtr TO total_geral_pos.
+        ELSE.
+          ADD i_bseg-dmbtr TO total_neg.
+          ADD i_bseg-dmbtr TO subtotal_neg.
+          ADD i_bseg-dmbtr TO total_geral_neg.
+        ENDIF.
+
+      ENDLOOP.
+    ENDLOOP.
+    IF sy-subrc <> 4.
+
+      SORT itab BY vbewa belnr. " sempsl.
+      FORMAT COLOR COL_NORMAL.
+
+      LOOP AT itab.
+        IF sy-tabix EQ 1.
+          WRITE:/ ' '. "itab-name1.
+        ELSE.
+          WRITE:/ ' '.
+        ENDIF.
+
+        IF itab-shkzg = 'H'.
+          WRITE:  itab-belnr   UNDER 'N. Documento',
+                  itab-buzei   UNDER 'It',
+                  itab-smenr   UNDER 'UL',
+                  itab-zznmfan UNDER 'Nome fantasia',
+                  itab-xbewart UNDER 'Descritivo',
+                  itab-dmbtr   UNDER  '     Valor',
+                  '-',
+                  itab-sgtxt.
+        ELSE.
+          WRITE:  itab-belnr   UNDER 'N. Documento',
+                  itab-buzei   UNDER 'It',
+                  itab-smenr   UNDER 'UL',
+                  itab-zznmfan UNDER 'Nome fantasia',
+                  itab-xbewart UNDER 'Descritivo',
+                  itab-dmbtr   UNDER  '     Valor',
+                  ' ',
+                  itab-sgtxt.
+        ENDIF.
+
+        HIDE: itab-belnr, itab-gjahr.
+
+        WRITE AT: c_max_tela ' '.
+
+      ENDLOOP.
+      CLEAR: itab.
+      REFRESH: itab.
+
+      IF total_pos > total_neg.
+        total_mod = total_pos - total_neg.
+      ELSE.
+        total_mod = total_neg - total_pos.
+      ENDIF.
+
+      WRITE / sy-uline.
+      FORMAT COLOR COL_TOTAL.
+      WRITE:/30 'TOTAL',60 total_mod.
+      IF total_pos < total_neg.
+        WRITE: '-'.
+      ENDIF.
+      WRITE AT: c_max_tela ' '.
+
+      IF subtotal_pos > subtotal_neg.
+        subtotal_mod = subtotal_pos - subtotal_neg.
+      ELSE.
+        subtotal_mod = subtotal_neg - subtotal_pos.
+      ENDIF.
+
+      WRITE / sy-uline.
+      FORMAT COLOR COL_TOTAL.
+      WRITE:/30 'SUB-TOTAL',60 subtotal_mod.
+      IF subtotal_pos < subtotal_neg.
+        WRITE: '-'.
+      ENDIF.
+      WRITE AT: c_max_tela ' '.
+
+    ENDIF.
+    CLEAR: total_pos, total_neg, subtotal_pos, subtotal_neg.
+
+    PERFORM restaura_bseg.
+    MOVE 'N' TO v_lojas_vagas.
+  ENDDO.
+
+  IF ( v_achou_bseg = 'S' ).
+    IF total_geral_pos > total_geral_neg.
+      total_geral_mod = total_geral_pos - total_geral_neg.
+    ELSE.
+      total_geral_mod = total_geral_neg - total_geral_pos.
+    ENDIF.
+
+    WRITE / sy-uline.
+    FORMAT COLOR COL_TOTAL.
+    WRITE:/30 'TOTAL GERAL',60 total_geral_mod.
+    IF total_geral_pos < total_geral_neg.
+      WRITE: '-'.
+    ENDIF.
+    WRITE AT: c_max_tela ' '.
+  ENDIF.
+  CLEAR: itab.
+ENDFORM.                    " show_list_vagas
+
+*&---------------------------------------------------------------------*
+*&      Form  trata_bseg
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM trata_bseg.
+  CLEAR: i_bseg_aux.
+  REFRESH: i_bseg_aux.
+  i_bseg_aux[] = i_bseg[].
+*break-point.
+  LOOP AT i_bseg.
+    IF v_lojas_vagas = 'S'.
+*   if ( ( i_bseg-vbewa ne '0700' ) and ( i_bseg-vbewa ne '0800' ) and
+*      ( i_bseg-vbewa ne '0900' ) and ( i_bseg-vbewa ne '1000' ) and
+*      ( i_bseg-vbewa+3(1) ne '7' ) ).
+*        ( ( ( i_bseg-vbewa eq '0700' ) or ( i_bseg-vbewa eq '0800' ) or
+*            ( i_bseg-vbewa eq '0900' ) or ( i_bseg-vbewa eq '1000' ) or
+*            ( i_bseg-vbewa+3(1) eq '7' ) ) and
+*            ( not ( i_bseg-vertn is initial ) ) ).
+      IF i_bseg-vertn NE '    '.
+        DELETE i_bseg.
+      ENDIF.
+    ELSE.
+*  if ( ( ( i_bseg-vbewa eq '0700' ) or ( i_bseg-vbewa eq '0800' ) or
+*     ( i_bseg-vbewa eq '0900' ) or ( i_bseg-vbewa eq '1000' ) or
+*     ( i_bseg-vbewa+3(1) eq '7' ) ) ).
+*         ( i_bseg-vertn ne '    ' ) ).
+      IF i_bseg-vertn EQ '    '.
+        DELETE i_bseg.
+      ENDIF.
+
+    ENDIF.
+  ENDLOOP.
+  DESCRIBE TABLE i_bseg LINES v_linhas_bseg.
+ENDFORM.
+
+*---------------------------------------------------------------------*
+*       FORM mostra_tipo                                              *
+*---------------------------------------------------------------------*
+*       ........                                                      *
+*---------------------------------------------------------------------*
+FORM mostra_tipo.
+  IF v_linhas_bseg > 0.
+    MOVE 'S' TO v_achou_bseg.
+    ULINE.
+    FORMAT COLOR COL_GROUP.
+    IF v_lojas_vagas = 'S'.
+      WRITE: / 'LOJAS VAGAS'.
+    ELSE.
+      WRITE: / 'LOJAS SUBSIDIADAS'.
+    ENDIF.
+    WRITE AT c_max_tela ' '.
+  ENDIF.
+ENDFORM.                    " trata_bseg
+
+*&---------------------------------------------------------------------*
+*&      Form  restaura_bseg
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM restaura_bseg.
+  CLEAR: i_bseg.
+  REFRESH: i_bseg.
+  i_bseg[] = i_bseg_aux[].
+  CLEAR: i_bseg_aux.
+  REFRESH: i_bseg_aux.
+ENDFORM.                    " restaura_bseg
+
+*&---------------------------------------------------------------------*
+*&      Form  carrega_mes
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM carrega_mes.
+  CLEAR: it_desc_meses.
+  REFRESH: it_desc_meses.
+
+  MOVE '01' TO it_desc_meses-monat.
+  MOVE 'Janeiro' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Fevereiro' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Março' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Abril' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Maio' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Junho' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Julho' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Agosto' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Setembro' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Outubro' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Novembro' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+
+  ADD 1 TO it_desc_meses-monat.
+  MOVE 'Dezembro' TO it_desc_meses-descricao.
+  APPEND it_desc_meses.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  finaliza_batch
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM finaliza_batch.
+  DATA: BEGIN OF it_docs OCCURS 0,
+          bukrs LIKE bkpf-bukrs,
+          belnr LIKE bkpf-belnr,
+          gjahr LIKE bkpf-gjahr,
+          telas TYPE i VALUE 0,
+        END OF it_docs.
+
+  DATA: BEGIN OF it_kunnr OCCURS 0,
+          kunnr LIKE bseg-kunnr,
+        END OF it_kunnr.
+
+  DATA: v_kunnr LIKE bseg-kunnr VALUE '',
+        v_clientes_repetidos VALUE 'N'.
+
+  CLEAR: it_docs.
+  REFRESH: it_docs.
+
+  LOOP AT i_bseg_1300.
+    IF ( i_bseg_1300-bukrs = 'SH02' ) AND
+       ( i_bseg_1300-vbewa = '1300' OR i_bseg_1300-vbewa = '7900'
+* RCONDE - Inclusao em 250501
+         OR i_bseg_1300-vbewa = '8000' ).
+      CLEAR: it_docs.
+      READ TABLE it_docs WITH KEY
+        bukrs = i_bseg_1300-bukrs belnr = i_bseg_1300-belnr
+        gjahr = i_bseg_1300-gjahr.
+      IF sy-subrc <> 0.
+        MOVE i_bseg_1300-bukrs TO it_docs-bukrs.
+        MOVE i_bseg_1300-belnr TO it_docs-belnr.
+        MOVE i_bseg_1300-gjahr TO it_docs-gjahr.
+        CLEAR: it_kunnr.
+        REFRESH: it_kunnr.
+        SELECT kunnr INTO TABLE it_kunnr
+        FROM bseg
+        WHERE ( bukrs = it_docs-bukrs ) AND
+              ( belnr = it_docs-belnr ) AND
+              ( gjahr = it_docs-gjahr ).
+
+        DESCRIBE TABLE it_kunnr LINES it_docs-telas.
+        it_docs-telas = it_docs-telas / 2.
+
+        MOVE 'N' TO v_clientes_repetidos.
+        CLEAR: v_kunnr.
+        LOOP AT it_kunnr.
+          IF v_kunnr = ''.
+            MOVE it_kunnr-kunnr TO v_kunnr.
+          ELSE.
+            IF ( it_kunnr-kunnr <> '' ) AND
+               ( it_kunnr-kunnr <> v_kunnr ).
+              MOVE 'S' TO v_clientes_repetidos.
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
+
+        IF v_clientes_repetidos = 'N'.
+          APPEND it_docs.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+
+  LOOP AT it_docs.
+
+*    perform bdc_dynpro      using 'SAPMF05A' '0100'.
+*    perform bdc_field       using 'BDC_OKCODE'
+*                                  '/EBR2'.
+*
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0104'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '/00'.
+
+    PERFORM bdc_field       USING 'BKPF-BELNR'
+                                  it_docs-belnr.
+
+    PERFORM bdc_field       USING 'BKPF-BUKRS'
+                                  it_docs-bukrs.
+
+    PERFORM bdc_field       USING 'BKPF-GJAHR'
+                                  it_docs-gjahr.
+
+    PERFORM bdc_field       USING 'RF05A-CPSTO'
+                                  'X'.
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0100'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '/00'.
+
+    DO it_docs-telas TIMES.
+      PERFORM bdc_dynpro      USING 'SAPLKACB' '0002'.
+      PERFORM bdc_field       USING 'BDC_OKCODE'
+                                    '=ENTE'.
+    ENDDO.
+
+    PERFORM bdc_dynpro      USING 'SAPMF05A' '0700'.
+    PERFORM bdc_field       USING 'BDC_OKCODE'
+                                  '=BU'.
+
+*   perform bdc_transaction using 'F-22'.
+    PERFORM bdc_transaction USING 'FBR2'.
+
+  ENDLOOP.
+
+* Alteração - Gabriel - 31/07/09
+
+*  PERFORM close_group.
+
+* Fim Alteração - Gabriel - 31/07/09
+
+ENDFORM.                    " finaliza_batch
+" carrega_mes
+
+* >>> RLH - Alterações - 18/07/2011 - Início
+*&---------------------------------------------------------------------*
+*&      Form  USER_COMMAND_REL
+*&---------------------------------------------------------------------*
+*       Trata o click dos botões
+*----------------------------------------------------------------------*
+FORM user_command_rel.
+
+  CASE sy-ucomm.
+
+    WHEN 'EXIBIR_REL'.
+
+* Monta tabela interna para ser usada no smart form
+      PERFORM monta_tab_smartforms.
+
+* Chama o smart forms para exibição
+      PERFORM exibe_dados_smartforms.
+
+    WHEN 'CONTAB'.
+
+* Gera os batch inputs online
+      PERFORM generate_batch.
+
+  ENDCASE.
+
+ENDFORM.                    " USER_COMMAND_REL
+
+*&---------------------------------------------------------------------*
+*&      Form  call_transaction
+*&---------------------------------------------------------------------*
+*       Call transaction
+*----------------------------------------------------------------------*
+*      -->P_trans
+*----------------------------------------------------------------------*
+FORM call_transaction USING    p_trans.
+
+  DATA: wa_options  TYPE ctu_params,
+        tl_messtab  TYPE TABLE OF bdcmsgcoll   WITH HEADER LINE.
+
+* Opções para o SHDB
+  CLEAR wa_options.
+  IF p_show IS INITIAL.
+
+    wa_options-dismode = 'E'.
+
+  ELSE.
+
+    wa_options-dismode = 'A'.
+
+  ENDIF.
+
+  wa_options-updmode = 'S'.
+
+* Chama transação
+  REFRESH tl_messtab[].
+  CALL TRANSACTION p_trans
+    USING bdcdata
+    OPTIONS FROM wa_options
+    MESSAGES INTO tl_messtab.
+
+* Apaga mensagens repetidas
+  DELETE ADJACENT DUPLICATES FROM tl_messtab.
+
+* Verifica se ocorreu td ok
+  CLEAR tl_messtab.
+  READ TABLE tl_messtab WITH KEY msgtyp = 'S'
+                                msgid  = 'F5'
+                                msgnr  = '300'.
+  IF NOT sy-subrc IS INITIAL.
+
+
+  ENDIF.
+
+ENDFORM.                    " call_transaction
+
+*&---------------------------------------------------------------------*
+*&      Form  monta_tab_smartforms
+*&---------------------------------------------------------------------*
+*       Monta tabela interna para ser usada no smart form
+*----------------------------------------------------------------------*
+FORM monta_tab_smartforms.
+
+* Tabela interna local
+  DATA: il_lv_pa    TYPE TABLE OF zflojas_vagas_pa WITH HEADER LINE,
+        il_divis_re TYPE TABLE OF zar_divis_re     WITH HEADER LINE,
+        il_cliente  LIKE cliente          OCCURS 0 WITH HEADER LINE.
+
+* Variáveis locais
+  DATA: lv_index TYPE sy-tabix,
+        lv_text  TYPE dd07v-ddtext,
+        lv_value TYPE dd07v-domvalue_l.
+
+* Limpa tabela
+  REFRESH i_smart[].
+
+* Seleciona os parâmetros e movimentos
+  REFRESH il_lv_pa[].
+  SELECT *
+    FROM zflojas_vagas_pa
+    INTO TABLE il_lv_pa
+    WHERE bukrs = p_bukrs.
+
+  IF NOT sy-subrc IS INITIAL.
+
+* Nenhum registro cadastrado na tabela ZFLOJAS_VAGAS_PA
+    MESSAGE i000(zfi) WITH text-005.
+
+  ELSE.
+
+* Seleção para verificar se é Fundo Promoção(FP)
+    REFRESH il_divis_re[].
+    SELECT *
+      FROM zar_divis_re
+      INTO TABLE il_divis_re
+      FOR ALL ENTRIES IN il_lv_pa
+      WHERE vbewa = il_lv_pa-vbewa.
+
+    IF sy-subrc IS INITIAL.
+
+      SORT il_divis_re BY vbewa.
+
+    ENDIF.
+
+  ENDIF.
+
+  SORT il_lv_pa BY denom_lv_sub.
+
+* Montar tabela do smart forms
+  LOOP AT il_lv_pa.
+
+    CLEAR i_smart.
+
+* Preenche campo Denominação
+    CLEAR: lv_text, lv_value.
+
+    lv_value = il_lv_pa-denom_lv_sub.
+
+    CALL FUNCTION 'C_DIC_DOMAIN_VALUE_TEXT_READ'
+         EXPORTING
+              name      = 'ZYDENOM_LV_SUB'
+              spras     = sy-langu
+              value     = lv_value
+         IMPORTING
+              text      = lv_text
+         EXCEPTIONS
+              not_found = 1
+              OTHERS    = 2.
+
+    IF sy-subrc IS INITIAL.
+
+      i_smart-denom =    lv_text.
+
+    ENDIF.
+
+* Preenche campo Centro de Custo
+    i_smart-kostl = il_lv_pa-kostl.
+
+* Preencher campo Conta Razão
+    i_smart-hkont = il_lv_pa-hkont.
+
+* Preencher campo Descrição
+    i_smart-zdesc = il_lv_pa-desc_lv_sub.
+
+* Preencher campo subsidiado
+    i_smart-subsidiado = il_lv_pa-subsidiado.
+
+* Preencher campo fundo promoção
+    CLEAR il_divis_re.
+    READ TABLE il_divis_re WITH KEY vbewa = il_lv_pa-vbewa
+                                    BINARY SEARCH.
+
+    IF sy-subrc IS INITIAL.
+
+      IF il_divis_re-ztmov = 'FP'.
+
+        i_smart-fundo_promo = 'X'.
+
+      ELSE.
+
+        CLEAR i_smart-fundo_promo.
+
+      ENDIF.
+
+    ENDIF.
+
+* Preenche o campo de valor
+    REFRESH il_cliente[].
+    il_cliente[] = cliente[].
+
+    SORT il_cliente BY vbewa.
+
+    CLEAR il_cliente.
+    READ TABLE il_cliente WITH KEY vbewa = il_lv_pa-vbewa
+                                   BINARY SEARCH.
+    IF sy-subrc IS INITIAL.
+
+      CLEAR lv_index.
+      lv_index = sy-tabix.
+
+      LOOP AT il_cliente FROM lv_index.
+
+        IF il_cliente-vbewa <> il_lv_pa-vbewa.
+          EXIT.
+        ENDIF.
+
+        CLEAR i_bseg.
+        READ TABLE i_bseg WITH KEY intnum = il_cliente-intnum.
+
+        IF sy-subrc IS INITIAL.
+
+          IF il_lv_pa-subsidiado = 'X'.
+
+            IF NOT i_bseg-vertn IS INITIAL.
+
+              i_smart-dmbtr = il_cliente-dmbtr.
+
+            ENDIF.
+
+          ELSE.
+
+            IF i_bseg-vertn IS INITIAL.
+
+              i_smart-dmbtr = il_cliente-dmbtr.
+
+            ENDIF.
+
+          ENDIF.
+
+        ENDIF.
+
+      ENDLOOP.
+
+    ENDIF.
+
+* Adiciona registro na tabela interna
+    APPEND i_smart.
+
+  ENDLOOP.
+
+ENDFORM.                    " monta_tab_smartforms
+
+*&---------------------------------------------------------------------*
+*&      Form  exibe_dados_smartforms
+*&---------------------------------------------------------------------*
+*       Chama o smart forms para exibição
+*----------------------------------------------------------------------*
+FORM exibe_dados_smartforms.
+
+* Declarações Locais
+  DATA: vl_form_nam   TYPE rs38l_fnam,
+        wa_imp        TYPE ssfcompop,            "Controle de impressão
+        wa_control    TYPE ssfctrlop,           "Controle de impressão
+        wa_compi      TYPE ssfcompin.
+
+  wa_compi-tdpreview = 'X'.
+  wa_compi-dialog = ''.
+  wa_compi-device = 'PRINTER'.
+  wa_compi-tddest = 'LOCL'.
+  wa_compi-tdnoprint = 'X'.
+
+  wa_control-preview = 'X'.
+  wa_control-no_open = 'X'.
+  wa_control-no_close = 'X'.
+  wa_control-no_dialog = 'X'.
+  wa_control-device = 'PRINTER'.
+  wa_imp-tddest = 'LOCL'.
+  wa_imp-tdnoprint = 'X'.
+
+  CALL FUNCTION 'SSF_OPEN'
+       EXPORTING
+            input  = wa_compi
+       EXCEPTIONS
+            error  = 1
+            OTHERS = 2.
+
+* Obtem a função do smartform
+  CLEAR vl_form_nam.
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+       EXPORTING
+            formname           = 'ZLOJAS_VAGAS_SUB'
+       IMPORTING
+            fm_name            = vl_form_nam
+       EXCEPTIONS
+            no_form            = 1
+            no_function_module = 2
+            OTHERS             = 3.
+
+  IF sy-subrc IS INITIAL.
+
+    CALL FUNCTION vl_form_nam
+         EXPORTING
+              control_parameters = wa_control
+              output_options     = wa_imp
+              p_bukrs            = p_bukrs
+              p_zfbdt            = p_zfbdt
+         TABLES
+              t_smart            = i_smart
+         EXCEPTIONS
+              formatting_error   = 1
+              internal_error     = 2
+              send_error         = 3
+              user_canceled      = 4
+              OTHERS             = 5.
+
+    IF sy-subrc IS INITIAL.
+
+      CALL FUNCTION 'SSF_CLOSE'
+           EXCEPTIONS
+                error  = 1
+                OTHERS = 2.
+
+    ENDIF.
+
+  ENDIF.
+
+ENDFORM.                    " exibe_dados_smartforms
+* <<< RLH - Alterações - 18/07/2011 - Fim
